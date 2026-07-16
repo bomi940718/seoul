@@ -126,6 +126,28 @@ namespace WorkReport.Core.Tests
         }
 
         [Fact]
+        public void 인덱스는_그룹과_상태를_임베드한다()
+        {
+            var d = Data();
+            d.Project.Group = "브랜딩";
+            d.Project.Status = ProjectInfo.StatusDone;
+            var html = new HtmlReportRenderer().RenderIndex(new List<ProjectReportData> { d }, DateTime.Now);
+
+            Assert.Contains("\"group\":\"브랜딩\"", html);
+            Assert.Contains("\"status\":\"완료\"", html);
+        }
+
+        [Theory]
+        [InlineData("", "미분류", "진행")]          // 미지정 → 기본값
+        [InlineData("이상한값", "미분류", "진행")]   // 잘못된 상태 → 진행
+        public void 프로젝트_그룹_상태_기본값(string status, string expGroup, string expStatus)
+        {
+            var p = new ProjectInfo { Number = "A", Name = "a", Status = status };
+            Assert.Equal(expGroup, p.EffectiveGroup);
+            Assert.Equal(expStatus, p.EffectiveStatus);
+        }
+
+        [Fact]
         public void 전체_쓰기는_프로젝트별_파일과_index를_생성한다()
         {
             string dir = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "wr-test-" + Guid.NewGuid().ToString("N"));

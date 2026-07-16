@@ -62,6 +62,8 @@ namespace WorkReport.Core.Reporting
                 {
                     number = p.Project.Number,
                     name = p.Project.Name,
+                    group = p.Project.EffectiveGroup,
+                    status = p.Project.EffectiveStatus,
                     file = p.FileName,
                     total = p.Records.Count,
                     o = p.Records.Count(r => NormStatus(r.Status) == "O"),

@@ -66,7 +66,24 @@ if (htmlOut != null)
                 .OrderByDescending(n => n.Count())
                 .Select(n => n.Key).FirstOrDefault() ?? g.Key,
         Active = true,
+        Group = GuessGroup(g.Key),
     }).ToList();
+
+    // 시안 확인용: 그룹/상태는 실제로는 projects.json(프로젝트 관리 창)에서 지정한다.
+    // 여기서는 데모를 위해 키 문자열로 그룹을 추정하고, BRANDING-2를 완료 상태 예시로 둔다.
+    var demo = projects.FirstOrDefault(p => KeyNormalizer.Normalize(p.Number) == "BRANDING-2");
+    if (demo != null) demo.Status = ProjectInfo.StatusDone;
+
+    static string GuessGroup(string key)
+    {
+        if (key.Contains("DEC") || key.Contains("EDUCATION")) return "교육";
+        if (key.Contains("관리") || key.Contains("MANAGEMENT")) return "관리";
+        if (key.Contains("BRANDING") || key.Contains("브라") || key.Contains("가방")) return "브랜딩";
+        if (key.Contains("ARCHITECTURE") || key.Contains("용도변경") || key.StartsWith("AR_")) return "건축";
+        if (key.Contains("INTERIOR") || key.StartsWith("IN_")) return "인테리어";
+        if (key.Contains("PLANNING") || key.Contains("엠티어")) return "기획";
+        return "미분류";
+    }
 
     var reports = ReportBuilder.Build(result.Records, projects);
     var renderer = new HtmlReportRenderer();
