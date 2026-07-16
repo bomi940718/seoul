@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>워크리포트 대시보드</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    font-family:'Malgun Gothic','Segoe UI',sans-serif;
+    background:#f5f6f8; color:#1f2430; font-size:14px; line-height:1.6;
+  }
+  a { text-decoration:none; color:inherit; }
+  .wrap { max-width:1000px; margin:0 auto; padding:24px 16px 60px; }
+
+  .hd { display:flex; flex-wrap:wrap; align-items:baseline; gap:8px 14px; margin-bottom:18px; }
+  .hd h1 { font-size:22px; font-weight:700; }
+  .hd .sub { color:#6b7280; font-size:12.5px; }
+  .hd .upd { margin-left:auto; color:#9ca3af; font-size:12px; }
+
+  .grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(280px, 1fr)); gap:12px; }
+
+  .card {
+    background:#fff; border:1px solid #e3e6ec; border-radius:10px;
+    padding:16px 18px; display:block;
+    transition:box-shadow .12s, transform .12s;
+  }
+  .card:hover { box-shadow:0 4px 14px rgba(16,24,40,.08); transform:translateY(-1px); }
+  .card .num { font-size:11.5px; color:#6b7280; letter-spacing:.4px; }
+  .card h2 { font-size:16px; font-weight:700; margin:2px 0 10px; word-break:break-all; }
+  .card .row1 { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+  .card .total { font-size:13px; color:#374151; }
+  .card .total b { font-size:16px; color:#111827; }
+  .pill {
+    display:inline-flex; align-items:center; gap:3px;
+    font-size:11.5px; font-weight:700; padding:1px 8px; border-radius:9px;
+  }
+  .pill.o { background:#dcfce7; color:#15803d; }
+  .pill.t { background:#ffedd5; color:#c2410c; }
+  .pill.x { background:#fee2e2; color:#b91c1c; }
+  .pill.n { background:#f3f4f6; color:#6b7280; }
+  .card .last { margin-top:9px; font-size:12px; color:#9ca3af; }
+  .card .last b { color:#4b5563; font-weight:700; }
+  .card.dead { opacity:.62; }
+
+  .empty { padding:60px 0; text-align:center; color:#9ca3af; }
+  .foot { margin-top:20px; text-align:center; color:#b0b6c1; font-size:11.5px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="hd">
+    <h1>워크리포트</h1>
+    <span class="sub" id="hSub"></span>
+    <span class="upd">마지막 갱신: <span id="hUpd"></span></span>
+  </div>
+  <div class="grid" id="grid"></div>
+  <div class="foot" id="foot"></div>
+</div>
+
+<script>
+"use strict";
+var META = @@META_JSON@@;
+var PROJECTS = @@DATA_JSON@@;
+
+function esc(s){
+  return String(s==null?"":s)
+    .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")
+    .replace(/"/g,"&quot;").replace(/'/g,"&#39;");
+}
+
+document.getElementById("hUpd").textContent = META.generatedAt;
+document.getElementById("hSub").textContent = "프로젝트 " + PROJECTS.length + "개";
+document.getElementById("foot").textContent =
+  "이 파일은 자동 생성됩니다 — 직접 수정하지 마세요 · " + META.generatedAt;
+
+var html = [];
+for(var i=0;i<PROJECTS.length;i++){
+  var p = PROJECTS[i];
+  html.push(
+    '<a class="card'+(p.total===0?" dead":"")+'" href="'+esc(p.file)+'">',
+    '<div class="num">'+esc(p.number)+"</div>",
+    "<h2>"+esc(p.name)+"</h2>",
+    '<div class="row1">',
+    '<span class="total">총 <b>'+p.total+"</b>건</span>",
+    '<span class="pill o">O '+p.o+"</span>",
+    '<span class="pill t">△ '+p.tri+"</span>",
+    '<span class="pill x">X '+p.x+"</span>",
+    (p.blank ? '<span class="pill n">· '+p.blank+"</span>" : ""),
+    "</div>",
+    '<div class="last">마지막 기록 <b>'+(p.last||"없음")+"</b></div>",
+    "</a>");
+}
+document.getElementById("grid").innerHTML =
+  html.length ? html.join("") : '<div class="empty">등록된 프로젝트가 없습니다.</div>';
+</script>
+</body>
+</html>

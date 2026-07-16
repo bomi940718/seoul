@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>@@TITLE@@</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html { -webkit-text-size-adjust:100%; }
+  body {
+    font-family:'Malgun Gothic','Segoe UI',sans-serif;
+    background:#f5f6f8; color:#1f2430;
+    font-size:14px; line-height:1.6;
+  }
+  a { color:#2563eb; text-decoration:none; word-break:break-all; }
+  a:hover { text-decoration:underline; }
+  .wrap { max-width:1000px; margin:0 auto; padding:20px 16px 60px; }
+
+  /* ── 헤더 ─────────────────────────── */
+  .hd { background:#fff; border:1px solid #e3e6ec; border-radius:10px; padding:18px 22px; margin-bottom:12px; }
+  .hd .num { font-size:12px; color:#6b7280; letter-spacing:.4px; }
+  .hd h1 { font-size:21px; font-weight:700; margin:2px 0 10px; }
+  .hd .stats { display:flex; flex-wrap:wrap; gap:6px 14px; font-size:12.5px; color:#4b5563; align-items:center; }
+  .hd .stats b { color:#111827; font-weight:700; }
+  .hd .upd { margin-left:auto; color:#9ca3af; font-size:12px; }
+  .hd .back { font-size:12.5px; }
+
+  /* ── 필터 바 ───────────────────────── */
+  .fbar {
+    position:sticky; top:0; z-index:10;
+    background:#fff; border:1px solid #e3e6ec; border-radius:10px;
+    padding:10px 12px; margin-bottom:14px;
+    display:flex; flex-wrap:wrap; gap:8px; align-items:center;
+    box-shadow:0 2px 6px rgba(16,24,40,.04);
+  }
+  .fbar input[type=search] {
+    flex:1 1 200px; min-width:160px;
+    padding:7px 10px; border:1px solid #d1d5db; border-radius:7px; font:inherit; font-size:13.5px;
+  }
+  .fbar select, .fbar input[type=date] {
+    padding:6.5px 8px; border:1px solid #d1d5db; border-radius:7px;
+    font:inherit; font-size:13px; background:#fff; color:#1f2430;
+  }
+  .fbar input:focus, .fbar select:focus { outline:2px solid #bfdbfe; border-color:#60a5fa; }
+  .fbar .tilde { color:#9ca3af; }
+  .fbar .cnt { font-size:12.5px; color:#6b7280; margin-left:auto; white-space:nowrap; }
+  .fbar .reset {
+    border:1px solid #d1d5db; background:#f9fafb; border-radius:7px;
+    padding:6.5px 10px; font:inherit; font-size:12.5px; color:#4b5563; cursor:pointer;
+  }
+  .fbar .reset:hover { background:#f3f4f6; }
+
+  /* ── 행 카드 리스트 ─────────────────── */
+  .list { background:#fff; border:1px solid #e3e6ec; border-radius:10px; overflow:hidden; }
+  .row { display:flex; gap:12px; padding:11px 16px; border-top:1px solid #eef0f4; }
+  .row:first-child { border-top:none; }
+  .row.newdate { border-top:2px solid #dfe3ea; }
+  .row:first-child.newdate { border-top:none; }
+
+  .dt { flex:0 0 86px; font-size:13px; font-weight:700; color:#374151; padding-top:1px; white-space:nowrap; }
+  .dt .dow { font-weight:400; color:#9ca3af; font-size:12px; margin-left:2px; }
+  .dt.ghost { visibility:hidden; }
+
+  .bdg {
+    flex:0 0 26px; height:26px; border-radius:7px;
+    display:flex; align-items:center; justify-content:center;
+    font-size:13px; font-weight:700; margin-top:1px;
+  }
+  .bdg.o { background:#dcfce7; color:#15803d; }
+  .bdg.t { background:#ffedd5; color:#c2410c; }
+  .bdg.x { background:#fee2e2; color:#b91c1c; }
+  .bdg.n { background:#f3f4f6; color:#9ca3af; }
+
+  .bd { flex:1; min-width:0; }
+  .desc { white-space:normal; word-break:break-word; }
+  .desc.clamp {
+    display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden;
+  }
+  .more {
+    border:none; background:none; color:#2563eb; cursor:pointer;
+    font:inherit; font-size:12.5px; padding:2px 0; display:none;
+  }
+  .meta { margin-top:5px; font-size:12px; color:#6b7280; display:flex; flex-wrap:wrap; gap:4px 10px; align-items:center; }
+  .chip {
+    display:inline-block; padding:1px 8px; border-radius:9px; font-size:11.5px; font-weight:700;
+  }
+  .chip.a0 { background:#dbeafe; color:#1d4ed8; }
+  .chip.a1 { background:#ede9fe; color:#6d28d9; }
+  .meta .lb { color:#9ca3af; }
+
+  .empty { padding:46px 16px; text-align:center; color:#9ca3af; font-size:13.5px; }
+  .foot { margin-top:14px; text-align:center; color:#b0b6c1; font-size:11.5px; }
+
+  @media (max-width:560px) {
+    .dt { flex-basis:66px; font-size:12px; }
+    .row { padding:10px 10px; gap:8px; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="hd">
+    <div class="num" id="hNum"></div>
+    <h1 id="hName"></h1>
+    <div class="stats">
+      <span>총 <b id="sTotal"></b>건</span>
+      <span id="sByAuthor"></span>
+      <span class="upd">마지막 갱신: <span id="sUpd"></span></span>
+      <span class="back"><a href="index.html">← 대시보드</a></span>
+    </div>
+  </div>
+
+  <div class="fbar">
+    <input type="search" id="fText" placeholder="검색 (내용·담당·비고)" autocomplete="off">
+    <select id="fAuthor"><option value="">작성자: 전체</option></select>
+    <select id="fStatus">
+      <option value="">여부: 전체</option>
+      <option value="O">O</option>
+      <option value="△">△</option>
+      <option value="X">X</option>
+      <option value="-">미기재</option>
+    </select>
+    <input type="date" id="fFrom"><span class="tilde">~</span><input type="date" id="fTo">
+    <button class="reset" id="fReset">초기화</button>
+    <span class="cnt" id="fCnt"></span>
+  </div>
+
+  <div class="list" id="list"></div>
+
+  <div class="foot" id="foot"></div>
+</div>
+
+<script>
+"use strict";
+var META = @@META_JSON@@;
+var DATA = @@DATA_JSON@@;
+
+// ── 유틸 ──────────────────────────────
+function esc(s){
+  return String(s==null?"":s)
+    .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")
+    .replace(/"/g,"&quot;").replace(/'/g,"&#39;");
+}
+// escape 후 적용: URL 자동 링크화 + 줄바꿈 <br>
+function rich(s){
+  var e = esc(s);
+  e = e.replace(/(https?:\/\/[^\s<>&"']+[^\s<>&"'.,)\]])/g,
+    '<a href="$1" target="_blank" rel="noopener">$1</a>');
+  return e.replace(/\r?\n/g,"<br>");
+}
+function statusCls(st){
+  if(st==="O") return "o";
+  if(st==="△") return "t";   // △
+  if(st==="X") return "x";
+  return "n";
+}
+function statusKey(st){
+  st = (st||"").trim().toUpperCase();
+  if(st==="O"||st==="0"||st==="○") return "O"; // ○ 허용
+  if(st==="△") return "△";
+  if(st==="X") return "X";
+  return "-";
+}
+
+// ── 헤더 채우기 ────────────────────────
+document.getElementById("hNum").textContent = META.number;
+document.getElementById("hName").textContent = META.name;
+document.title = META.number + " · " + META.name + " — 워크리포트";
+document.getElementById("sTotal").textContent = DATA.length;
+document.getElementById("sUpd").textContent = META.generatedAt;
+(function(){
+  var parts = [];
+  for(var i=0;i<META.authors.length;i++){
+    var n = 0;
+    for(var j=0;j<DATA.length;j++) if(DATA[j].a===i) n++;
+    parts.push(META.authors[i]+" "+n+"건");
+  }
+  document.getElementById("sByAuthor").textContent = parts.join(" · ");
+  var sel = document.getElementById("fAuthor");
+  META.authors.forEach(function(a,i){
+    var o = document.createElement("option");
+    o.value = String(i); o.textContent = a;
+    sel.appendChild(o);
+  });
+})();
+document.getElementById("foot").textContent =
+  "이 파일은 자동 생성됩니다 — 직접 수정하지 마세요 · " + META.generatedAt;
+
+// ── 필터 + 렌더 ────────────────────────
+var els = {
+  text: document.getElementById("fText"),
+  author: document.getElementById("fAuthor"),
+  status: document.getElementById("fStatus"),
+  from: document.getElementById("fFrom"),
+  to: document.getElementById("fTo"),
+  cnt: document.getElementById("fCnt"),
+  list: document.getElementById("list")
+};
+
+function pass(r){
+  var q = els.text.value.trim().toLowerCase();
+  if(q){
+    var hay = (r.ds+"\n"+r.rg+"\n"+r.os+"\n"+r.ml+"\n"+r.pl+"\n"+r.nt).toLowerCase();
+    var terms = q.split(/\s+/);
+    for(var i=0;i<terms.length;i++) if(hay.indexOf(terms[i])<0) return false;
+  }
+  if(els.author.value!=="" && r.a!==Number(els.author.value)) return false;
+  if(els.status.value!=="" && statusKey(r.st)!==els.status.value) return false;
+  if(els.from.value && r.d<els.from.value) return false;
+  if(els.to.value && r.d>els.to.value) return false;
+  return true;
+}
+
+function render(){
+  var html = [], shown = 0, prevDate = null;
+  for(var i=0;i<DATA.length;i++){
+    var r = DATA[i];
+    if(!pass(r)) continue;
+    shown++;
+    var isNew = r.d!==prevDate;
+    var sk = statusKey(r.st);
+    var meta = ['<span class="chip a'+r.a+'">'+esc(META.authors[r.a]||"?")+"</span>"];
+    var who = [r.rg, r.os].filter(Boolean).join(" ");
+    if(who) meta.push(esc(who));
+    if(r.ml) meta.push('<span class="lb">연락:</span> '+rich(r.ml));
+    if(r.sc) meta.push('<span class="lb">시각:</span> '+esc(r.sc));
+    if(r.pl) meta.push('<span class="lb">실행계획:</span> '+rich(r.pl));
+    if(r.nt) meta.push('<span class="lb">비고:</span> '+rich(r.nt));
+    html.push(
+      '<div class="row'+(isNew?" newdate":"")+'">',
+      '<div class="dt'+(isNew?"":" ghost")+'">'+r.d.slice(5)+'<span class="dow">('+r.w+")</span></div>",
+      '<div class="bdg '+statusCls(sk)+'">'+(sk==="-"?"·":esc(sk))+"</div>",
+      '<div class="bd"><div class="desc clamp">'+rich(r.ds)+"</div>",
+      '<button class="more">더보기</button>',
+      '<div class="meta">'+meta.join(" ")+"</div></div>",
+      "</div>");
+    prevDate = r.d;
+  }
+  els.list.innerHTML = shown ? html.join("")
+    : '<div class="empty">조건에 맞는 기록이 없습니다.</div>';
+  els.cnt.textContent = shown===DATA.length ? DATA.length+"건" : shown+" / "+DATA.length+"건";
+
+  // 3줄 초과만 "더보기" 노출
+  var descs = els.list.querySelectorAll(".desc");
+  for(var k=0;k<descs.length;k++){
+    if(descs[k].scrollHeight > descs[k].clientHeight+2){
+      descs[k].nextElementSibling.style.display = "inline-block";
+    }
+  }
+}
+
+els.list.addEventListener("click", function(e){
+  if(!e.target.classList.contains("more")) return;
+  var d = e.target.previousElementSibling;
+  var open = d.classList.toggle("clamp");
+  e.target.textContent = open ? "더보기" : "접기";
+});
+
+["input","change"].forEach(function(ev){
+  els.text.addEventListener(ev, render);
+  els.author.addEventListener(ev, render);
+  els.status.addEventListener(ev, render);
+  els.from.addEventListener(ev, render);
+  els.to.addEventListener(ev, render);
+});
+document.getElementById("fReset").addEventListener("click", function(){
+  els.text.value=""; els.author.value=""; els.status.value="";
+  els.from.value=""; els.to.value="";
+  render();
+});
+
+render();
+</script>
+</body>
+</html>
