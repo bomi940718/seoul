@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyTitle>법규검토서 생성기</AssemblyTitle>
+    <!-- 협력체 배포용 단일 exe: dotnet publish -c Release -r win-x64 (self-contained, PublishSingleFile) -->
+    <!-- UseWindowsForms 대신 FrameworkReference를 직접 참조한다:
+         리눅스 CI의 Canonical SDK에는 WindowsDesktop 타겟이 없어도 이 방식이면 크로스 빌드된다.
+         (디자이너/.resx를 쓰지 않는 코드 전용 WinForms라 가능) -->
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.WindowsDesktop.App.WindowsForms" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="System.Windows.Forms" />
+    <Using Include="System.Drawing" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\LawReview.Core\LawReview.Core.csproj" />
+  </ItemGroup>
+
+</Project>

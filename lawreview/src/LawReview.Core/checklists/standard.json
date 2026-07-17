@@ -1,0 +1,217 @@
+[
+  // ── 요약 검토표 + 설계개요 정량 항목 ──────────────────────────────
+  {
+    "id": "coverage_ratio",
+    "title": "건폐율",
+    "section": "요약",
+    "inSummary": true,
+    "judgment": "Quantitative",
+    "basis": [
+      { "lawName": "국토의 계획 및 이용에 관한 법률", "article": "77", "target": "Law" },
+      { "lawName": "{시} 도시계획 조례", "target": "Ordinance" }
+    ]
+  },
+  {
+    "id": "floor_area_ratio",
+    "title": "용적률",
+    "section": "요약",
+    "inSummary": true,
+    "judgment": "Quantitative",
+    "basis": [
+      { "lawName": "국토의 계획 및 이용에 관한 법률", "article": "78", "target": "Law" },
+      { "lawName": "{시} 도시계획 조례", "target": "Ordinance" }
+    ]
+  },
+  {
+    "id": "parking",
+    "title": "부설주차장",
+    "section": "요약",
+    "inSummary": true,
+    "judgment": "Quantitative",
+    "basis": [
+      { "lawName": "주차장법", "article": "19", "target": "Law" },
+      { "lawName": "주차장법 시행령", "article": "6", "target": "Law" },
+      { "lawName": "{시} 주차장 조례", "target": "Ordinance" }
+    ]
+  },
+  {
+    "id": "sunlight_height",
+    "title": "건축물의 높이 (일조 등의 확보)",
+    "section": "요약",
+    "inSummary": true,
+    "judgment": "Ai",
+    "legalCriterion": "전용주거·일반주거지역에서 정북방향 이격",
+    "basis": [
+      { "lawName": "건축법", "article": "61", "target": "Law" },
+      { "lawName": "건축법 시행령", "article": "86", "target": "Law" }
+    ]
+  },
+  {
+    "id": "street_height_limit",
+    "title": "가로구역별 건축물 높이제한",
+    "section": "요약",
+    "inSummary": true,
+    "judgment": "Ai",
+    "basis": [
+      { "lawName": "건축법", "article": "60", "target": "Law" }
+    ]
+  },
+  {
+    "id": "setback",
+    "title": "대지 안의 공지",
+    "section": "요약",
+    "inSummary": true,
+    "judgment": "Ai",
+    "legalCriterion": "건축선·인접대지경계선 이격 (건축조례 별표)",
+    "basis": [
+      { "lawName": "건축법", "article": "58", "target": "Law" },
+      { "lawName": "{시} 건축 조례", "target": "Ordinance" }
+    ]
+  },
+  {
+    "id": "open_space",
+    "title": "공개공지 등의 확보",
+    "section": "요약",
+    "inSummary": true,
+    "judgment": "Ai",
+    "legalCriterion": "다중이용시설 바닥면적 합계 5,000㎡ 이상",
+    "basis": [
+      { "lawName": "건축법", "article": "43", "target": "Law" },
+      { "lawName": "{시} 건축 조례", "target": "Ordinance" }
+    ]
+  },
+  {
+    "id": "landscaping",
+    "title": "대지 안의 조경",
+    "section": "요약",
+    "inSummary": true,
+    "judgment": "Ai",
+    "legalCriterion": "면적 200㎡ 이상 대지 조경 의무 (면제 규정 확인)",
+    "basis": [
+      { "lawName": "건축법", "article": "42", "target": "Law" },
+      { "lawName": "건축법 시행령", "article": "27", "target": "Law" }
+    ]
+  },
+  {
+    "id": "energy_plan",
+    "title": "에너지 절약계획서 제출",
+    "section": "요약",
+    "inSummary": true,
+    "judgment": "Ai",
+    "legalCriterion": "연면적 500㎡ 이상 건축물",
+    "basis": [
+      { "lawName": "녹색건축물 조성 지원법", "article": "14", "target": "Law" },
+      { "lawName": "녹색건축물 조성 지원법 시행령", "article": "10", "target": "Law" }
+    ]
+  },
+  {
+    "id": "deliberation",
+    "title": "건축위원회 심의 대상 여부",
+    "section": "해당 지번 관련 주요 법규",
+    "inSummary": true,
+    "judgment": "Ai",
+    "basis": [
+      { "lawName": "{시} 건축 조례", "article": "9", "target": "Ordinance" }
+    ]
+  },
+
+  // ── 지구단위계획 (S4 크롤러 연동 전까지는 수동 확인) ──────────────
+  {
+    "id": "district_unit_plan",
+    "title": "지구단위계획 지침",
+    "section": "건축허가 관련 지구단위계획 지침",
+    "inSummary": false,
+    "judgment": "Manual",
+    "note": "해당 필지가 지구단위계획구역인 경우 결정도서(고시문·조서·지침)를 확인하세요. 도면(지침도) 규제는 자동 판정 대상이 아닙니다."
+  },
+
+  // ── 장별 상세검토 ─────────────────────────────────────────────
+  {
+    "id": "excavation",
+    "title": "토지 굴착 부분에 관한 조치",
+    "section": "제4장 건축물의 대지와 도로",
+    "judgment": "Ai",
+    "basis": [
+      { "lawName": "건축법", "article": "41", "target": "Law" },
+      { "lawName": "건축법 시행규칙", "article": "26", "target": "Law" }
+    ]
+  },
+  {
+    "id": "structure_safety",
+    "title": "구조 안전의 확인",
+    "section": "제5장 건축물의 구조 및 재료",
+    "judgment": "Ai",
+    "basis": [
+      { "lawName": "건축법", "article": "48", "target": "Law" },
+      { "lawName": "건축법 시행령", "article": "32", "target": "Law" }
+    ]
+  },
+  {
+    "id": "evacuation",
+    "title": "직통계단·피난계단의 설치",
+    "section": "제5장 건축물의 구조 및 재료",
+    "judgment": "Ai",
+    "basis": [
+      { "lawName": "건축법", "article": "49", "target": "Law" },
+      { "lawName": "건축법 시행령", "article": "34", "target": "Law" }
+    ]
+  },
+  {
+    "id": "fire_zone",
+    "title": "방화지구·방화구획",
+    "section": "제5장 건축물의 구조 및 재료",
+    "judgment": "Ai",
+    "basis": [
+      { "lawName": "건축법", "article": "51", "target": "Law" },
+      { "lawName": "건축법 시행령", "article": "46", "target": "Law" }
+    ]
+  },
+  {
+    "id": "accessibility",
+    "title": "장애인 등의 편의시설 설치 대상",
+    "section": "장애인·노인·임산부 등의 편의증진 보장에 관한 법률",
+    "judgment": "Ai",
+    "basis": [
+      { "lawName": "장애인ㆍ노인ㆍ임산부 등의 편의증진 보장에 관한 법률", "article": "7", "target": "Law" },
+      { "lawName": "장애인ㆍ노인ㆍ임산부 등의 편의증진 보장에 관한 법률 시행령", "article": "4", "target": "Law" }
+    ]
+  },
+  {
+    "id": "traffic_impact",
+    "title": "교통영향평가 대상 여부",
+    "section": "도시교통정비 촉진법",
+    "judgment": "Ai",
+    "basis": [
+      { "lawName": "도시교통정비 촉진법", "article": "15", "target": "Law" }
+    ]
+  },
+  {
+    "id": "art_decoration",
+    "title": "건축물에 대한 미술작품 설치 대상",
+    "section": "문화예술진흥법",
+    "judgment": "Ai",
+    "legalCriterion": "연면적 1만㎡ 이상 건축물",
+    "basis": [
+      { "lawName": "문화예술진흥법", "article": "9", "target": "Law" }
+    ]
+  },
+  {
+    "id": "renewable_energy",
+    "title": "신·재생에너지 설비 설치 대상",
+    "section": "신에너지 및 재생에너지 개발·이용·보급 촉진법",
+    "judgment": "Ai",
+    "basis": [
+      { "lawName": "신에너지 및 재생에너지 개발ㆍ이용ㆍ보급 촉진법", "article": "12", "target": "Law" }
+    ]
+  },
+  {
+    "id": "buried_heritage",
+    "title": "매장유산 지표조사 대상",
+    "section": "매장유산 보호 및 조사에 관한 법률",
+    "judgment": "Ai",
+    "legalCriterion": "사업면적 3만㎡ 이상",
+    "basis": [
+      { "lawName": "매장유산 보호 및 조사에 관한 법률", "article": "11", "target": "Law" }
+    ]
+  }
+]
