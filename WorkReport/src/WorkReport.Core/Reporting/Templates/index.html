@@ -45,11 +45,11 @@
 
   .card {
     background:#fff; border:1px solid #e3e6ec; border-radius:10px;
-    padding:15px 18px; display:block; position:relative;
+    padding:15px 18px; display:block; position:relative; cursor:pointer;
     transition:box-shadow .12s, transform .12s;
   }
   .card:hover { box-shadow:0 4px 14px rgba(16,24,40,.08); transform:translateY(-1px); }
-  .card .num { font-size:11.5px; color:#6b7280; letter-spacing:.4px; padding-right:44px; }
+  .card .num { font-size:11.5px; color:#6b7280; letter-spacing:.4px; padding-right:70px; }
   .card h3 { font-size:16px; font-weight:700; margin:2px 0 10px; word-break:break-all; }
   .card .row1 { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
   .card .total { font-size:13px; color:#374151; }
@@ -65,10 +65,15 @@
   .card .last { margin-top:9px; font-size:12px; color:#9ca3af; }
   .card .last b { color:#4b5563; font-weight:700; }
 
-  .st { position:absolute; top:12px; right:12px; font-size:11px; font-weight:700;
-        padding:1px 8px; border-radius:9px; }
-  .st.plan { background:#e0f2fe; color:#0369a1; }
-  .st.done { background:#f3f4f6; color:#6b7280; }
+  /* 카드별 상태 변경 셀렉터 (이 PC 브라우저에 저장) */
+  .stSel {
+    position:absolute; top:10px; right:10px;
+    font:inherit; font-size:11.5px; color:#4b5563;
+    border:1px solid #d1d5db; border-radius:7px; padding:2px 4px; background:#fff;
+    cursor:pointer;
+  }
+  .stSel.plan { border-color:#7dd3fc; color:#0369a1; background:#f0f9ff; }
+  .stSel.done { color:#9ca3af; background:#f9fafb; }
   .card.done { opacity:.6; }
 
   .empty { padding:60px 0; text-align:center; color:#9ca3af; }
@@ -113,6 +118,19 @@ var groups = [];
 PROJECTS.forEach(function(p){ if(groups.indexOf(p.group)<0) groups.push(p.group); });
 var curGroup = "";                                // "" = 전체
 var stOn = { "계획":true, "진행":true, "완료":false };
+var ST = ["계획","진행","완료"];
+
+// 상태는 이 PC 브라우저(localStorage)에 저장한 값이 우선, 없으면 projects.json 값
+function effStatus(p){
+  try {
+    var v = localStorage.getItem("workreport.status." + p.number);
+    if (ST.indexOf(v) >= 0) return v;
+  } catch(e) {}
+  return p.status;
+}
+function setStatus(p, v){
+  try { localStorage.setItem("workreport.status." + p.number, v); } catch(e) {}
+}
 
 function makeToggle(label, count, on, onClick){
   var b = document.createElement("button");
@@ -136,8 +154,8 @@ function renderFilters(){
 
   var s = document.getElementById("fStatus");
   s.innerHTML = "";
-  ["계획","진행","완료"].forEach(function(st){
-    var cnt = PROJECTS.filter(function(p){ return p.status===st; }).length;
+  ST.forEach(function(st){
+    var cnt = PROJECTS.filter(function(p){ return effStatus(p)===st; }).length;
     s.appendChild(makeToggle(st, cnt, stOn[st], function(){
       stOn[st] = !stOn[st];
       renderAll();
@@ -145,11 +163,17 @@ function renderFilters(){
   });
 }
 
-function cardHtml(p){
-  var stCls = p.status==="계획" ? "plan" : (p.status==="완료" ? "done" : "");
+function cardHtml(p, idx){
+  var st = effStatus(p);
+  var selCls = st==="계획" ? " plan" : (st==="완료" ? " done" : "");
+  var sel = ['<select class="stSel'+selCls+'" data-idx="'+idx+'" title="프로젝트 상태 변경 (이 PC에 저장)">'];
+  ST.forEach(function(v){
+    sel.push('<option value="'+v+'"'+(v===st?" selected":"")+">"+v+"</option>");
+  });
+  sel.push("</select>");
   return [
-    '<a class="card'+(p.status==="완료"?" done":"")+'" href="'+esc(p.file)+'">',
-    (stCls ? '<span class="st '+stCls+'">'+esc(p.status)+"</span>" : ""),
+    '<div class="card'+(st==="완료"?" done":"")+'" data-href="'+esc(p.file)+'" tabindex="0" role="link">',
+    sel.join(""),
     '<div class="num">'+esc(p.number)+"</div>",
     "<h3>"+esc(p.name)+"</h3>",
     '<div class="row1">',
@@ -160,7 +184,7 @@ function cardHtml(p){
     (p.blank ? '<span class="pill n">· '+p.blank+"</span>" : ""),
     "</div>",
     '<div class="last">마지막 기록 <b>'+(p.last||"없음")+"</b></div>",
-    "</a>"].join("");
+    "</div>"].join("");
 }
 
 function renderAll(){
@@ -168,7 +192,7 @@ function renderAll(){
 
   var visible = PROJECTS.filter(function(p){
     if(curGroup && p.group!==curGroup) return false;
-    return !!stOn[p.status];
+    return !!stOn[effStatus(p)];
   });
   document.getElementById("hSub").textContent =
     "프로젝트 " + visible.length + (visible.length===PROJECTS.length ? "개" : " / " + PROJECTS.length + "개");
@@ -179,12 +203,30 @@ function renderAll(){
     if(items.length===0) return;
     html.push('<div class="grp"><h2>'+esc(name)+'<span class="n">'+items.length+"개</span></h2>");
     html.push('<div class="grid">');
-    items.forEach(function(p){ html.push(cardHtml(p)); });
+    items.forEach(function(p){ html.push(cardHtml(p, PROJECTS.indexOf(p))); });
     html.push("</div></div>");
   });
   document.getElementById("sections").innerHTML =
     html.length ? html.join("") : '<div class="empty">표시할 프로젝트가 없습니다.</div>';
 }
+
+// 카드 클릭 → 리포트 이동 (상태 셀렉터 클릭은 제외)
+var sections = document.getElementById("sections");
+sections.addEventListener("click", function(e){
+  if(e.target.closest(".stSel")) return;
+  var card = e.target.closest(".card");
+  if(card) location.href = card.getAttribute("data-href");
+});
+sections.addEventListener("keydown", function(e){
+  if(e.key==="Enter" && e.target.classList.contains("card"))
+    location.href = e.target.getAttribute("data-href");
+});
+// 상태 변경 → 저장 후 다시 그리기
+sections.addEventListener("change", function(e){
+  if(!e.target.classList.contains("stSel")) return;
+  var p = PROJECTS[Number(e.target.getAttribute("data-idx"))];
+  if(p){ setStatus(p, e.target.value); renderAll(); }
+});
 
 renderAll();
 </script>

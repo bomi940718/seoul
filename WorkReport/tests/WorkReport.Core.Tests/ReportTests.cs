@@ -138,8 +138,8 @@ namespace WorkReport.Core.Tests
         }
 
         [Theory]
-        [InlineData("", "미분류", "진행")]          // 미지정 → 기본값
-        [InlineData("이상한값", "미분류", "진행")]   // 잘못된 상태 → 진행
+        [InlineData("", "ETC", "진행")]          // 미지정 → 기본값
+        [InlineData("이상한값", "ETC", "진행")]   // 잘못된 상태 → 진행
         public void 프로젝트_그룹_상태_기본값(string status, string expGroup, string expStatus)
         {
             var p = new ProjectInfo { Number = "A", Name = "a", Status = status };

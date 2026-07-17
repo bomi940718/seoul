@@ -74,15 +74,16 @@ if (htmlOut != null)
     var demo = projects.FirstOrDefault(p => KeyNormalizer.Normalize(p.Number) == "BRANDING-2");
     if (demo != null) demo.Status = ProjectInfo.StatusDone;
 
+    // 그룹명은 영어 대문자로 통일 (I열 키 표기와 톤을 맞춰 대시보드에서 구분이 쉽도록)
     static string GuessGroup(string key)
     {
-        if (key.Contains("DEC") || key.Contains("EDUCATION")) return "교육";
-        if (key.Contains("관리") || key.Contains("MANAGEMENT")) return "관리";
-        if (key.Contains("BRANDING") || key.Contains("브라") || key.Contains("가방")) return "브랜딩";
-        if (key.Contains("ARCHITECTURE") || key.Contains("용도변경") || key.StartsWith("AR_")) return "건축";
-        if (key.Contains("INTERIOR") || key.StartsWith("IN_")) return "인테리어";
-        if (key.Contains("PLANNING") || key.Contains("엠티어")) return "기획";
-        return "미분류";
+        if (key.Contains("DEC") || key.Contains("EDUCATION")) return "EDUCATION";
+        if (key.Contains("관리") || key.Contains("MANAGEMENT")) return "GENERAL";
+        if (key.Contains("BRANDING") || key.Contains("브라") || key.Contains("가방")) return "BRANDING";
+        if (key.Contains("ARCHITECTURE") || key.Contains("용도변경") || key.StartsWith("AR_")) return "ARCHITECTURE";
+        if (key.Contains("INTERIOR") || key.StartsWith("IN_")) return "INTERIOR";
+        if (key.Contains("PLANNING") || key.Contains("엠티어")) return "PLANNING";
+        return "ETC";
     }
 
     var reports = ReportBuilder.Build(result.Records, projects);

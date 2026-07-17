@@ -29,7 +29,7 @@ namespace WorkReport.Core.Models
         public const string StatusDone = "완료";
 
         [JsonIgnore]
-        public string EffectiveGroup => string.IsNullOrWhiteSpace(Group) ? "미분류" : Group.Trim();
+        public string EffectiveGroup => string.IsNullOrWhiteSpace(Group) ? "ETC" : Group.Trim();
 
         [JsonIgnore]
         public string EffectiveStatus
