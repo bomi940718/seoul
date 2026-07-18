@@ -74,7 +74,7 @@ public sealed class ReviewEngine
                 }
 
                 if (basis.Annex is string annexName)
-                    row.Citations.Add(await GetAnnexCitationAsync(lawName, annexName, lawText.EffectiveDate, ct));
+                    row.Citations.Add(await GetAnnexCitationAsync(lawText, lawName, annexName, ct));
             }
 
             // 2) 판정.
@@ -160,26 +160,31 @@ public sealed class ReviewEngine
     internal static string ResolvePlaceholders(string lawName, ProjectInput p) =>
         lawName.Replace("{시}", p.Province).Replace("{구}", p.City);
 
-    /// <summary>별표는 내용이 파일(HWP 등)이므로 검토서에는 별표명 + 원문 링크로 인용한다.</summary>
-    private async Task<CitedArticle> GetAnnexCitationAsync(string lawName, string annexName,
-        string effectiveDate, CancellationToken ct)
+    /// <summary>
+    /// 별표는 내용이 파일(HWP 등)이므로 검토서에는 별표명 + 원문 링크로 인용한다.
+    /// 본문 조회에 딸려온 별표 목록을 우선 쓰고(일부 법령은 별표 검색 색인에 없음), 없으면 별표 검색으로 보완한다.
+    /// </summary>
+    private async Task<CitedArticle> GetAnnexCitationAsync(LawText lawText, string lawName, string annexName,
+        CancellationToken ct)
     {
+        if (lawText.FindAnnex(annexName) is Annex annex)
+            return new CitedArticle(lawText.Name, "-", $"[별표 {annex.Number}] {annex.Title}",
+                $"별표 내용은 원문 파일을 확인하세요: {annex.Link}", lawText.EffectiveDate);
         try
         {
-            var annexes = await _law.SearchAnnexesAsync(lawName, ct);
-            var normalized = annexName.Replace(" ", "");
-            var hit = annexes.FirstOrDefault(a =>
-                $"별표{a.Number.TrimStart('0')}" == normalized || a.Name.Replace(" ", "").Contains(normalized));
+            var normalized = annexName.Replace(" ", "").Replace("별표", "");
+            var hit = (await _law.SearchAnnexesAsync(lawName, ct)).FirstOrDefault(a =>
+                a.LawName.Replace(" ", "") == lawName.Replace(" ", "") && a.Number == normalized);
             if (hit is not null)
-                return new CitedArticle(lawName, hit.Number, $"[{annexName}] {hit.Name}",
-                    $"별표 내용은 원문 파일을 확인하세요: {hit.Link}", effectiveDate);
+                return new CitedArticle(lawName, "-", $"[별표 {hit.Number}] {hit.Name}",
+                    $"별표 내용은 원문 파일을 확인하세요: {hit.Link}", lawText.EffectiveDate);
         }
         catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException)
         {
             Report($"별표 조회 실패: {lawName} {annexName} — {ex.Message}");
         }
         return new CitedArticle(lawName, "-", $"[{annexName}] (조회 실패)",
-            $"{lawName}의 {annexName}를 법제처에서 찾지 못했습니다. 원문을 직접 확인하세요.", effectiveDate);
+            $"{lawName}의 {annexName}를 법제처에서 찾지 못했습니다. 원문을 직접 확인하세요.", lawText.EffectiveDate);
     }
 
     private async Task<LawText?> GetLawCachedAsync(string lawName, LawTarget target, CancellationToken ct)
@@ -190,8 +195,7 @@ public sealed class ReviewEngine
         try
         {
             var hits = await _law.SearchAsync(lawName, target, ct);
-            // 정확히 일치하는 이름 우선, 없으면 첫 결과.
-            var best = hits.FirstOrDefault(h => h.Name == lawName) ?? hits.FirstOrDefault();
+            var best = PickBestMatch(hits, lawName);
             if (best is not null)
                 text = await _law.GetLawTextAsync(best.SerialNo, target, ct);
         }
@@ -201,6 +205,18 @@ public sealed class ReviewEngine
         }
         _lawCache[lawName] = text;
         return text;
+    }
+
+    /// <summary>
+    /// 검색 결과에서 원하는 법령을 고른다. 정확 일치 → 공백 무시 일치 → 첫 결과 순.
+    /// (예: "대전광역시 건축 조례" 검색 시 첫 결과는 "대전광역시 건축기본조례"라 첫 결과 폴백만으로는 위험하다.)
+    /// </summary>
+    internal static LawSummary? PickBestMatch(IReadOnlyList<LawSummary> hits, string lawName)
+    {
+        var normalized = lawName.Replace(" ", "");
+        return hits.FirstOrDefault(h => h.Name == lawName)
+            ?? hits.FirstOrDefault(h => h.Name.Replace(" ", "") == normalized)
+            ?? hits.FirstOrDefault();
     }
 
     private void Report(string msg) => _progress?.Report(msg);

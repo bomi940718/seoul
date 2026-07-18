@@ -171,7 +171,7 @@ public sealed class DocxReportBuilder
         foreach (var row in r.Rows.Where(x => x.Item.InSummary))
         {
             var basis = row.Citations.Count > 0
-                ? string.Join("\n", row.Citations.Select(c => $"{c.LawName} 제{c.ArticleNo}조").Distinct())
+                ? string.Join("\n", row.Citations.Select(c => $"{c.LawName} {FormatArticleRef(c.ArticleNo)}".TrimEnd()).Distinct())
                 : string.Join("\n", row.Item.Basis.Select(b => ResolveName(b.LawName, r.Project)));
             rows.Add(new[]
             {
@@ -209,7 +209,8 @@ public sealed class DocxReportBuilder
                     rows.Add(new[]
                     {
                         first ? row.Item.Title : "",
-                        $"{c.LawName} 제{c.ArticleNo}조({c.Title})" +
+                        (FormatArticleRef(c.ArticleNo) is { Length: > 0 } artRef
+                            ? $"{c.LawName} {artRef}({c.Title})" : $"{c.LawName} {c.Title}") +
                             (c.EffectiveDate.Length > 0 ? $" [시행 {FormatDate(c.EffectiveDate)}]" : "") +
                             $"\n{c.Body}",
                         first ? row.Applicability.ToString() : "",
@@ -225,6 +226,14 @@ public sealed class DocxReportBuilder
 
     private static string ResolveName(string lawName, ProjectInput p) =>
         ReviewEngine.ResolvePlaceholders(lawName, p);
+
+    /// <summary>"48의2" → "제48조의2", "42" → "제42조". 별표 인용("-")은 빈 문자열.</summary>
+    internal static string FormatArticleRef(string articleNo)
+    {
+        if (string.IsNullOrEmpty(articleNo) || articleNo == "-") return "";
+        var idx = articleNo.IndexOf('의');
+        return idx > 0 ? $"제{articleNo[..idx]}조의{articleNo[(idx + 1)..]}" : $"제{articleNo}조";
+    }
 
     private static string FormatDate(string yyyymmdd) =>
         yyyymmdd.Length == 8 ? $"{yyyymmdd[..4]}.{yyyymmdd[4..6]}.{yyyymmdd[6..]}" : yyyymmdd;
