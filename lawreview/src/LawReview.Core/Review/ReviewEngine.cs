@@ -61,6 +61,20 @@ public sealed class ReviewEngine
                         row.Citations.Add(new CitedArticle(lawText.Name, artNo, "(조문 없음)",
                             $"제{artNo}조를 현행 법령에서 찾지 못했습니다. 개정으로 조문번호가 바뀌었을 수 있습니다.", lawText.EffectiveDate));
                 }
+                else if (basis.ArticleTitleKeyword is string keyword)
+                {
+                    // 조례는 지자체마다 조문번호가 다르므로 제목 키워드로 찾는다.
+                    var matches = lawText.FindArticlesByTitle(keyword);
+                    if (matches.Count > 0)
+                        foreach (var art in matches)
+                            row.Citations.Add(new CitedArticle(lawText.Name, art.Number, art.Title, art.Body, lawText.EffectiveDate));
+                    else
+                        row.Citations.Add(new CitedArticle(lawText.Name, "-", "(조문 없음)",
+                            $"제목에 \"{keyword}\"가 들어간 조문을 찾지 못했습니다. 해당 법령 전문을 직접 확인하세요.", lawText.EffectiveDate));
+                }
+
+                if (basis.Annex is string annexName)
+                    row.Citations.Add(await GetAnnexCitationAsync(lawName, annexName, lawText.EffectiveDate, ct));
             }
 
             // 2) 판정.
@@ -145,6 +159,28 @@ public sealed class ReviewEngine
     /// <summary>"{시}" "{구}" 자리표시자를 프로젝트 지자체명으로 치환. 조례가 항상 해당 지자체 것만 조회되게 한다.</summary>
     internal static string ResolvePlaceholders(string lawName, ProjectInput p) =>
         lawName.Replace("{시}", p.Province).Replace("{구}", p.City);
+
+    /// <summary>별표는 내용이 파일(HWP 등)이므로 검토서에는 별표명 + 원문 링크로 인용한다.</summary>
+    private async Task<CitedArticle> GetAnnexCitationAsync(string lawName, string annexName,
+        string effectiveDate, CancellationToken ct)
+    {
+        try
+        {
+            var annexes = await _law.SearchAnnexesAsync(lawName, ct);
+            var normalized = annexName.Replace(" ", "");
+            var hit = annexes.FirstOrDefault(a =>
+                $"별표{a.Number.TrimStart('0')}" == normalized || a.Name.Replace(" ", "").Contains(normalized));
+            if (hit is not null)
+                return new CitedArticle(lawName, hit.Number, $"[{annexName}] {hit.Name}",
+                    $"별표 내용은 원문 파일을 확인하세요: {hit.Link}", effectiveDate);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException)
+        {
+            Report($"별표 조회 실패: {lawName} {annexName} — {ex.Message}");
+        }
+        return new CitedArticle(lawName, "-", $"[{annexName}] (조회 실패)",
+            $"{lawName}의 {annexName}를 법제처에서 찾지 못했습니다. 원문을 직접 확인하세요.", effectiveDate);
+    }
 
     private async Task<LawText?> GetLawCachedAsync(string lawName, LawTarget target, CancellationToken ct)
     {

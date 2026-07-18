@@ -16,13 +16,27 @@ public class ChecklistTests
         var path = FindRepoFile(Path.Combine("src", "LawReview.Core", "checklists", "standard.json"));
         var items = ChecklistLoader.Load(path);
 
-        Assert.True(items.Count >= 15);
+        Assert.True(items.Count >= 40, $"항목 수 부족: {items.Count}");
         Assert.Contains(items, i => i.Id == "coverage_ratio" && i.Judgment == JudgmentType.Quantitative);
         Assert.Contains(items, i => i.Id == "landscaping" && i.Judgment == JudgmentType.Ai);
         Assert.Contains(items, i => i.Id == "district_unit_plan" && i.Judgment == JudgmentType.Manual);
+
+        // 실무 검토서의 장 구성이 모두 커버되어야 한다.
+        var sections = items.Select(i => i.Section).Distinct().ToList();
+        Assert.Contains("제4장 건축물의 대지와 도로", sections);
+        Assert.Contains("제5장 건축물의 구조 및 재료", sections);
+        Assert.Contains("제6장 지역 및 지구의 건축물", sections);
+        Assert.Contains("제7장 건축설비", sections);
+        Assert.Contains("녹색건축물 조성 지원법", sections);
+        Assert.Contains("각종 인증 의무 대상 여부", sections);
+        Assert.Contains("주차장법", sections);
+
+        var ordinances = items.SelectMany(i => i.Basis).Where(b => b.Target == LawTarget.Ordinance).ToList();
+        Assert.NotEmpty(ordinances);
         // 조례 참조는 지자체 자리표시자를 써야 한다 — 특정 도시 이름이 하드코딩되면 안 된다.
-        var ordinances = items.SelectMany(i => i.Basis).Where(b => b.Target == LawTarget.Ordinance);
         Assert.All(ordinances, b => Assert.Contains("{시}", b.LawName));
+        // 조례는 지자체마다 조문번호가 다르므로 번호 하드코딩 금지 — 제목 키워드만 허용.
+        Assert.All(ordinances, b => Assert.Null(b.Article));
     }
 
     [Fact]
@@ -63,6 +77,37 @@ public class MolegClientTests
         var service = client.BuildServiceUri("12345", LawTarget.Law).ToString();
         Assert.Contains("lawService.do", service);
         Assert.Contains("MST=12345", service);
+
+        var annex = client.BuildAnnexSearchUri("건축물의 구조기준 등에 관한 규칙").ToString();
+        Assert.Contains("target=licbyl", annex);
+    }
+
+    [Fact]
+    public void 가지번호_조문을_파싱한다()
+    {
+        using var doc = System.Text.Json.JsonDocument.Parse(
+            """{"조문번호":"48","조문가지번호":"02","조문여부":"조문","조문제목":"건축물 내진등급의 설정","조문내용":"제48조의2(건축물 내진등급의 설정) ..."}""");
+        var art = MolegClient.ParseArticle(doc.RootElement);
+        Assert.Equal("48의2", art.Number);
+
+        var law = new LawText("건축법", "20230611", new[] { art });
+        Assert.NotNull(law.FindArticle("48의2"));
+        Assert.Null(law.FindArticle("48"));
+    }
+
+    [Fact]
+    public void 조문_제목_키워드로_찾는다()
+    {
+        var law = new LawText("대전광역시 건축 조례", "20230714", new[]
+        {
+            new Article("34", "공개 공지 등의 확보", "…"),
+            new Article("40", "대지 안의 공지", "…"),
+            new Article("9", "심의사항", "…"),
+        });
+        Assert.Single(law.FindArticlesByTitle("공개 공지"));
+        Assert.Single(law.FindArticlesByTitle("공개공지"));      // 공백 무시
+        Assert.Single(law.FindArticlesByTitle("심의"));           // 부분 일치
+        Assert.Empty(law.FindArticlesByTitle("주차장"));
     }
 }
 

@@ -93,9 +93,13 @@ public sealed class MolegClient
         return new LawText(lawName, effectiveDate, articles);
     }
 
-    private static Article ParseArticle(JsonElement jo)
+    internal static Article ParseArticle(JsonElement jo)
     {
         var no = GetString(jo, "조문번호") ?? "";
+        // 가지번호: "제48조의2"의 "2". 0이 아니면 조문번호에 "의N"을 붙인다.
+        var branch = GetString(jo, "조문가지번호");
+        if (branch is not null && branch.TrimStart('0').Length > 0)
+            no = $"{no}의{branch.TrimStart('0')}";
         var title = GetString(jo, "조문제목") ?? "";
         var parts = new List<string>();
         if (GetString(jo, "조문내용") is string head && head.Length > 0) parts.Add(head.Trim());
@@ -119,6 +123,38 @@ public sealed class MolegClient
         }
         return new Article(no, title, string.Join("\n", parts));
     }
+
+    /// <summary>
+    /// 별표·서식 검색 (target=licbyl). 조문 본문에 담기지 않는 별표(예: 구조기준규칙 별표 11)의
+    /// 메타데이터와 원문 링크를 가져온다. 별표 내용 자체는 파일(HWP 등)이라 링크로 안내한다.
+    /// </summary>
+    public async Task<IReadOnlyList<AnnexSummary>> SearchAnnexesAsync(string lawName, CancellationToken ct = default)
+    {
+        var uri = BuildAnnexSearchUri(lawName);
+        using var doc = await GetJsonAsync(uri, ct);
+
+        var results = new List<AnnexSummary>();
+        foreach (var container in doc.RootElement.EnumerateObject())
+        {
+            var items = FindFirstArray(container.Value);
+            if (items.ValueKind == JsonValueKind.Undefined) continue;
+            foreach (var item in EnumerateArrayOrSingle(items))
+            {
+                var link = GetString(item, "별표서식파일링크") ?? GetString(item, "별표법령상세링크") ?? "";
+                if (link.StartsWith('/')) link = "https://www.law.go.kr" + link;
+                results.Add(new AnnexSummary(
+                    LawName: GetString(item, "법령명") ?? GetString(item, "법령명한글") ?? "",
+                    Name: GetString(item, "별표명") ?? "",
+                    Number: GetString(item, "별표번호") ?? "",
+                    Link: link));
+            }
+        }
+        return results;
+    }
+
+    internal Uri BuildAnnexSearchUri(string lawName) =>
+        new($"{BaseUrl}/lawSearch.do?OC={Uri.EscapeDataString(_oc)}&target=licbyl" +
+            $"&type=JSON&display=50&query={Uri.EscapeDataString(lawName)}");
 
     internal Uri BuildSearchUri(string query, LawTarget target) =>
         new($"{BaseUrl}/lawSearch.do?OC={Uri.EscapeDataString(_oc)}&target={TargetCode(target)}" +
@@ -177,6 +213,22 @@ public sealed record LawText(string Name, string EffectiveDate, IReadOnlyList<Ar
 {
     public Article? FindArticle(string articleNo) =>
         Articles.FirstOrDefault(a => a.Number.TrimStart('0') == articleNo.TrimStart('0'));
+
+    /// <summary>
+    /// 조문 제목 키워드로 조문을 찾는다.
+    /// 자치법규는 지자체마다 조문번호가 달라 번호를 고정할 수 없으므로
+    /// (예: 공개공지 — 대전 건축조례 34조, 타 시는 다른 번호) 제목으로 매칭한다.
+    /// </summary>
+    public IReadOnlyList<Article> FindArticlesByTitle(string keyword)
+    {
+        var normalized = Normalize(keyword);
+        return Articles.Where(a => Normalize(a.Title).Contains(normalized)).ToList();
+    }
+
+    private static string Normalize(string s) => s.Replace(" ", "").Replace("ㆍ", "·");
 }
+
+/// <summary>별표·서식 검색 결과. 내용은 파일이므로 링크로 안내한다.</summary>
+public sealed record AnnexSummary(string LawName, string Name, string Number, string Link);
 
 public sealed record Article(string Number, string Title, string Body);

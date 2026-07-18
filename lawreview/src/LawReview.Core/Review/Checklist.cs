@@ -38,7 +38,11 @@ public sealed class ChecklistItem
 public sealed class LawBasis
 {
     public string LawName { get; set; } = "";
-    public string? Article { get; set; }               // 조문 번호 (없으면 법령 전체)
+    public string? Article { get; set; }               // 조문 번호 ("48의2" 형식 지원)
+    /// <summary>조문 제목 키워드. 조례처럼 지자체마다 조문번호가 다른 경우 번호 대신 사용.</summary>
+    public string? ArticleTitleKeyword { get; set; }
+    /// <summary>별표 참조 (예: "별표 12"). 내용은 파일이므로 검토서에 원문 링크로 안내된다.</summary>
+    public string? Annex { get; set; }
     [JsonConverter(typeof(JsonStringEnumConverter))]
     public LawTarget Target { get; set; } = LawTarget.Law;
 }
