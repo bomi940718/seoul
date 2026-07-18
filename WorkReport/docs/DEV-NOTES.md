@@ -53,3 +53,22 @@ DAY 기준 상대 오프셋(+1~+10)을 기본값으로, 헤더 텍스트(메일/
 
 - `WorkReport.Core`(netstandard2.0) + 테스트 + ParseCheck 는 Linux/.NET 8 SDK에서 빌드·실행 가능
 - Excel-DNA 애드인(net48)·WPF 창·ExcelDnaPack 패킹은 Windows에서 최종 빌드 (README 절차 참조)
+
+## 7. 4단계(애드인) 실측 확정 사항
+
+- **이 PC의 Excel은 32비트(x86)** (16.0 ClickToRun, `C:\Program Files (x86)`). 지시서의
+  "AddIn64.xll 단일" 전제와 달리 32/64비트 xll을 **모두** 생성하도록 함
+  (`publish\WorkReport-AddIn-packed.xll` = 32비트, `...64-packed.xll` = 64비트).
+  설치 시 각 PC Excel 비트에 맞는 파일을 등록할 것.
+- ExcelDna.AddIn 1.9.0의 **자동 생성 .dna에는 참조 어셈블리가 포함되지 않아**
+  packed xll에 의존성이 누락됨 → 프로젝트의 `WorkReport-AddIn.dna` 커스텀 템플릿에
+  ClosedXML 계열 등 14개 참조를 `Pack="true"`로 명시. **NuGet 의존성이 바뀌면 이 템플릿도 갱신할 것.**
+- ClosedXML이 요구하는 `System.Memory 4.0.1.1` 등 버전 불일치 →
+  `AutoGenerateBindingRedirects` + csproj의 `ExcelDnaCopyXllConfig` 타깃으로 `.xll.config` 생성.
+  ExcelDnaPack이 이를 **CONFIG 리소스로 xll 내부에 내장**하므로 단일 파일 배포 유지됨.
+- 검증 완료 (2026-07-18):
+  - 32비트 packed xll을 실제 Excel `RegisterXLL`로 로드 → True, AutoOpen 로그 기록 확인
+  - 애드인 어셈블리 직접 로드로 갱신 파이프라인 E2E 실행 → 기준선 일치
+    (일반관리 194 / 개인관리 148 / BRANDING-1 41 / OFFLINE_DEC 60 / 평택 13, 미등록 11종,
+    출력 루트 복사·경고 처리 정상)
+- 리본의 [프로젝트 관리]·[설정] 버튼은 5단계 구현 전까지 안내 문구만 표시.
