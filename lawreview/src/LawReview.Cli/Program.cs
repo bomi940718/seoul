@@ -8,6 +8,30 @@ using LawReview.Core.Review;
 //   사용법: dotnet run --project src/LawReview.Cli -- <OC키> [출력.docx]
 //   Claude 키(환경변수 ANTHROPIC_API_KEY)가 없으면 AI 판정은 "확인필요"로 두고 조문 인용만 검증한다.
 
+// --districtplan <키워드>: 서울도시공간포털 지구단위계획 실조회만 단독 실행 (OC 키 불필요)
+if (args.Length >= 2 && args[0] == "--districtplan")
+{
+    using var dpHttp = new HttpClient { Timeout = TimeSpan.FromSeconds(60) };
+    var seoul = new LawReview.Core.Municipal.SeoulUrbanPortalClient(dpHttp);
+    var found = await seoul.SearchAsync(args[1]);
+    Console.WriteLine($"\"{args[1]}\" 검색 결과 {found.Count}건:");
+    foreach (var r in found)
+    {
+        Console.WriteLine($"  · {r.ZoneName}");
+        Console.WriteLine($"    {r.Location} | {r.NoticeOrgan} {r.NoticeNo} ({r.NoticeDate})" +
+                          (r.AreaAfter is double a ? $" | 구역면적 {a:N1}㎡" : ""));
+        if (r.NoticePdfUrl.Length > 0) Console.WriteLine($"    고시문: {r.NoticePdfUrl}");
+    }
+    if (args.Length >= 3 && found.Count > 0)
+    {
+        var ok = await seoul.DownloadNoticePdfAsync(found[0], args[2]);
+        Console.WriteLine(ok
+            ? $"고시문 PDF 저장: {args[2]} ({new FileInfo(args[2]).Length:N0} bytes)"
+            : "고시문 PDF 다운로드 실패.");
+    }
+    return 0;
+}
+
 var oc = args.Length > 0 ? args[0] : Environment.GetEnvironmentVariable("LAWREVIEW_OC");
 if (string.IsNullOrWhiteSpace(oc))
 {

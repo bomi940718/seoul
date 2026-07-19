@@ -195,7 +195,9 @@ public sealed class ReviewModule : IAppModule
             var judge = new ClaudeJudgmentProvider(Http, settings.ClaudeApiKey, settings.ClaudeModel);
             var progress = new Progress<string>(msg => _log.AppendText($"{DateTime.Now:HH:mm:ss}  {msg}\r\n"));
 
-            var engine = new ReviewEngine(moleg, judge, progress);
+            // 지구단위계획 조회 — 구현된 지자체(서울)만 제공자가 붙고, 그 외는 기존 수동 안내 유지.
+            var districtPlan = LawReview.Core.Municipal.DistrictPlanProviders.For(project.Province, Http);
+            var engine = new ReviewEngine(moleg, judge, progress, districtPlan);
             var result = await engine.RunAsync(project, checklist);
 
             new DocxReportBuilder().Build(result, dialog.FileName);

@@ -1,6 +1,7 @@
 using LawReview.Core.Ai;
 using LawReview.Core.LawApi;
 using LawReview.Core.Models;
+using LawReview.Core.Municipal;
 
 namespace LawReview.Core.Review;
 
@@ -13,16 +14,19 @@ public sealed class ReviewEngine
 {
     private readonly MolegClient _law;
     private readonly IJudgmentProvider _judge;
+    private readonly IDistrictPlanProvider? _districtPlan;
     private readonly IProgress<string>? _progress;
 
     // 같은 법령을 항목마다 다시 받지 않도록 세션 내 캐시.
     private readonly Dictionary<string, LawText?> _lawCache = new();
 
-    public ReviewEngine(MolegClient law, IJudgmentProvider judge, IProgress<string>? progress = null)
+    public ReviewEngine(MolegClient law, IJudgmentProvider judge, IProgress<string>? progress = null,
+        IDistrictPlanProvider? districtPlan = null)
     {
         _law = law;
         _judge = judge;
         _progress = progress;
+        _districtPlan = districtPlan;
     }
 
     public async Task<ReviewResult> RunAsync(ProjectInput project, IReadOnlyList<ChecklistItem> checklist,
@@ -102,6 +106,8 @@ public sealed class ReviewEngine
                 case JudgmentType.Manual:
                     row.Applicability = Applicability.확인필요;
                     row.Reason = item.Note ?? "자동 판정 대상이 아닙니다. 원문·도면을 직접 확인하세요.";
+                    if (item.Id == "district_unit_plan")
+                        await EnrichDistrictPlanAsync(row, project, ct);
                     break;
             }
 
@@ -205,6 +211,46 @@ public sealed class ReviewEngine
         }
         _lawCache[lawName] = text;
         return text;
+    }
+
+    /// <summary>
+    /// 지구단위계획 항목에 지자체 포털 조회 결과를 붙인다. 판정은 "확인필요"를 유지하고
+    /// (도면 규제는 자동 판정 불가 — 검토 품질 원칙 5), 후보 구역과 고시문 원문 링크만 인용한다.
+    /// </summary>
+    private async Task EnrichDistrictPlanAsync(ReviewRow row, ProjectInput project, CancellationToken ct)
+    {
+        if (_districtPlan is null) return;
+        if (!project.Province.Replace(" ", "").StartsWith(_districtPlan.Province.Replace(" ", "")[..2])) return;
+        var keyword = DistrictPlanProviders.KeywordFromAddress(project.SiteAddress);
+        if (keyword is null) return;
+
+        try
+        {
+            Report($"지구단위계획 조회 중 ({_districtPlan.Province} \"{keyword}\")...");
+            var records = await _districtPlan.SearchAsync(keyword, ct);
+            if (records.Count == 0)
+            {
+                row.Reason = $"\"{keyword}\" 검색 결과 지구단위계획구역이 조회되지 않았습니다. " +
+                             $"포털에서 필지 기준으로 재확인하세요: {SeoulUrbanPortalClient.PortalPageUrl}";
+                return;
+            }
+            foreach (var r in records.Take(5))
+            {
+                var body = $"{r.NoticeOrgan} {r.NoticeNo} ({r.NoticeDate} 고시) — {r.NoticeTitle}\n위치: {r.Location}" +
+                           (r.AreaAfter is double a ? $"\n구역면적: {a:N1} ㎡" : "") +
+                           (r.NoticePdfUrl.Length > 0 ? $"\n고시문 원문: {r.NoticePdfUrl}" : "") +
+                           $"\n포털 열람: {r.PortalUrl}";
+                row.Citations.Add(new CitedArticle("지구단위계획", "-", r.ZoneName, body, ""));
+            }
+            row.Reason = $"\"{keyword}\" 기준 후보 구역 {records.Count}건 조회. 해당 필지의 구역 포함 여부와 " +
+                         "지침(도면 포함)은 결정도서 원문으로 직접 확인하세요. 지침도 규제는 자동 판정 대상이 아닙니다.";
+        }
+        catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException or System.Text.Json.JsonException)
+        {
+            Report($"지구단위계획 조회 실패: {ex.Message}");
+            row.Reason = $"지구단위계획 포털 조회에 실패했습니다 ({ex.Message}). 포털에서 직접 확인하세요: " +
+                         SeoulUrbanPortalClient.PortalPageUrl;
+        }
     }
 
     /// <summary>
