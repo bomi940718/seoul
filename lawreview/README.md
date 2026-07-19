@@ -74,4 +74,6 @@ dotnet publish src/LawReview.App -c Release -r win-x64 --self-contained \
 - [ ] 3단계(2차): 고시문 PDF 텍스트 파싱, 타 지자체 제공자 추가
 - [x] 4단계: 토지이음 색인 — VWorld로 지번 주소 → PNU → 용도지역·지구 자동조회(`LandUse/`),
       앱 "자동조회" 버튼으로 지역/지구 입력란 채움 (이름 색인만, 개략 검토 내용 인용 안 함 — 원칙 2)
+- [x] 5단계: 배포 — 자가포함 단일 exe(체크리스트 내장, 약 70MB), 협력체 안내([DEPLOY.md](DEPLOY.md)),
+      빌드 스크립트([build-exe.bat](build-exe.bat)). AI 판정은 Claude 키 없이도 "확인필요"로 진행 가능
 - [ ] 이후: 토지이용계획확인원 CAD 변환 모듈 (IAppModule로 탭 추가)

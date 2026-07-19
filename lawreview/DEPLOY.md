@@ -1,0 +1,71 @@
+# 배포 안내 (협력체용)
+
+법규검토서 생성기를 협력체와 나눠 쓰기 위한 배포·사용 안내입니다.
+개발자용 문서는 [HANDOFF.md](HANDOFF.md), 아키텍처는 [README.md](README.md)를 보세요.
+
+---
+
+## 1. 배포 담당자: 단일 exe 만들기
+
+Windows + [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0)가 설치된 PC에서:
+
+```
+cd lawreview
+build-exe.bat
+```
+
+또는 직접:
+
+```
+dotnet publish src/LawReview.App -c Release -r win-x64 --self-contained ^
+  -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true ^
+  -p:EnableCompressionInSingleFile=true
+```
+
+결과물: `src/LawReview.App/bin/Release/net8.0-windows/win-x64/publish/LawReview.App.exe`
+(약 70MB, .NET 런타임 포함 — 받는 사람은 아무것도 설치할 필요 없음)
+
+- **`LawReview.App.exe` 파일 하나만** 협력체에 전달하면 됩니다. 체크리스트는 exe에 내장돼 있어
+  별도 파일이 필요 없습니다. (같은 폴더에 `checklists\standard.json`을 두면 그 파일이 우선 적용되므로,
+  현장별로 검토 항목을 커스터마이즈하고 싶을 때만 함께 배포하세요.)
+- exe에는 **API 키가 들어있지 않습니다.** 각자 자기 키를 발급해 앱에 입력합니다(아래 3번).
+
+## 2. 받는 사람: 실행
+
+1. `LawReview.App.exe` 더블클릭. (첫 실행 시 Windows SmartScreen 경고가 뜨면
+   "추가 정보 → 실행"을 누르세요. 서명되지 않은 사내 배포 exe라 나오는 정상 경고입니다.)
+2. 설치 과정 없음. 바로 창이 뜹니다.
+
+## 3. API 키 발급·입력 (각 사용자가 1회)
+
+**설정 탭**에 입력하고 저장하면 이 PC(`%APPDATA%\LawReview\settings.json`)에만 저장됩니다.
+
+| 키 | 발급처 | 비용 | 용도 | 필수 |
+|---|---|---|---|---|
+| **법제처 Open API (OC)** | [open.law.go.kr](https://open.law.go.kr) → 회원가입 → Open API 사용 신청 | 무료 | 조문 원문·시행일자 조회 | **필수** |
+| **Claude API** | [console.anthropic.com](https://console.anthropic.com) → API 키 생성 | 호출당 과금 | 적용/해당없음 판정 | 선택 |
+| **VWorld** | [vworld.kr](https://www.vworld.kr/dev/v4dv_apikey_s001.do) | 무료 | 용도지역 자동조회 | 선택 |
+
+- **법제처 키**만 있으면 조문 인용·건폐율/용적률/주차 계산·검토서 생성이 다 됩니다.
+  승인에 1~2일 걸릴 수 있습니다. OC 값은 보통 **가입 이메일의 @ 앞부분**입니다.
+- **Claude 키**가 없으면 AI 판정 항목은 "확인필요"로 표시됩니다(조문은 그대로 인용). 나중에 넣어도 됩니다.
+  - 모델은 기본값 `claude-sonnet-5` 권장. 검토 1회에 약 50회 호출되어 소액 과금됩니다.
+- **VWorld 키**는 "자동조회" 버튼(주소→용도지역)에만 씁니다. 없으면 지역/지구를 직접 입력하세요.
+  키 발급 시 등록한 **서비스 URL**을 설정의 "VWorld 서비스 URL"에 그대로 넣어야 합니다(기본 `http://localhost`).
+
+## 4. 사용 흐름
+
+1. **법규검토 탭**에서 프로젝트 정보·면적표 입력.
+   - 처음이면 **"예시 입력 (둔곡 공장)"** 버튼으로 채워 넣고 동작을 확인해 보세요.
+   - 면적표는 엑셀에서 행을 복사해 그리드에 붙여넣기(Ctrl+V) 할 수 있습니다.
+   - 대지위치를 넣고 **"자동조회"** 를 누르면 지역/지구가 채워집니다(VWorld 키 필요).
+2. **"검토 실행 → 검토서 저장"** → 저장 위치를 고르면 검토가 진행되고 `.docx`가 생성됩니다.
+3. 생성된 검토서를 열어 **"확인필요"** 항목(지구단위계획 지침 등)과 인용된 조문 원문을 사람이 최종 확인.
+
+## 5. 결과물 신뢰 범위 (중요)
+
+- 검토서에 인용되는 **조문은 전부 법제처 현행 원문**입니다(조문번호·시행일자 포함).
+- **숫자(건폐율·용적률·주차)는 코드가 계산**합니다. AI는 적용/해당없음 판정과 사유만 답합니다.
+- **도면(지구단위계획 지침도) 규제는 자동 판정하지 않습니다** — "확인필요"로 두고 원본 링크를 첨부하니
+  반드시 사람이 결정도서를 확인하세요.
+- 즉 이 도구는 **초안 자동화**입니다. 최종 책임은 검토자에게 있습니다.

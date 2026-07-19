@@ -63,6 +63,24 @@ public static class ChecklistLoader
     public static List<ChecklistItem> LoadFromJson(string json) =>
         JsonSerializer.Deserialize<List<ChecklistItem>>(json, Options)
         ?? throw new InvalidOperationException("체크리스트 JSON 파싱 실패");
+
+    /// <summary>
+    /// 표준 체크리스트를 로드한다. 배포된 단일 exe에서도 동작하도록 어셈블리에 내장된 사본을 쓰되,
+    /// 실행 폴더에 checklists/standard.json이 있으면(현장 커스터마이즈) 그 파일을 우선한다.
+    /// </summary>
+    public static List<ChecklistItem> LoadDefault()
+    {
+        var external = Path.Combine(AppContext.BaseDirectory, "checklists", "standard.json");
+        if (File.Exists(external)) return Load(external);
+
+        var asm = typeof(ChecklistLoader).Assembly;
+        var resourceName = asm.GetManifestResourceNames()
+            .FirstOrDefault(n => n.EndsWith("standard.json", StringComparison.OrdinalIgnoreCase))
+            ?? throw new InvalidOperationException("내장 체크리스트 리소스를 찾을 수 없습니다.");
+        using var stream = asm.GetManifestResourceStream(resourceName)!;
+        using var reader = new StreamReader(stream);
+        return LoadFromJson(reader.ReadToEnd());
+    }
 }
 
 /// <summary>검토 항목 하나의 최종 결과 행. 검토서 표의 한 줄에 대응한다.</summary>

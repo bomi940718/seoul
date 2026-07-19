@@ -40,6 +40,26 @@ public class ChecklistTests
     }
 
     [Fact]
+    public void 내장_체크리스트가_로드된다()
+    {
+        // 단일 exe 배포에서 checklists 폴더 없이도 어셈블리 내장 사본으로 동작해야 한다.
+        var items = ChecklistLoader.LoadDefault();
+        Assert.True(items.Count >= 40, $"내장 체크리스트 항목 수 부족: {items.Count}");
+        Assert.Contains(items, i => i.Id == "coverage_ratio");
+
+        // standard.json이 실제로 어셈블리에 내장돼 있고, 그 스트림에서 바로 파싱돼야
+        // 단일 exe(외부 checklists 폴더 없음)에서 동작한다.
+        var asm = typeof(ChecklistLoader).Assembly;
+        var resourceName = asm.GetManifestResourceNames()
+            .FirstOrDefault(n => n.EndsWith("standard.json", StringComparison.OrdinalIgnoreCase));
+        Assert.NotNull(resourceName);
+        using var stream = asm.GetManifestResourceStream(resourceName!)!;
+        using var reader = new StreamReader(stream);
+        var embedded = ChecklistLoader.LoadFromJson(reader.ReadToEnd());
+        Assert.Equal(items.Count, embedded.Count);
+    }
+
+    [Fact]
     public void 조례명의_지자체_자리표시자가_치환된다()
     {
         var p = new ProjectInput { Province = "대전광역시", City = "유성구" };

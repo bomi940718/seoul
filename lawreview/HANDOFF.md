@@ -139,35 +139,43 @@ cd seoul\lawreview
 dotnet test && dotnet run --project src\LawReview.App
 ```
 
+### 5단계 — 배포 (2026-07-19)
+
+- **자가포함 단일 exe**: `build-exe.bat` 또는
+  `dotnet publish src/LawReview.App -c Release -r win-x64 --self-contained -p:PublishSingleFile=true
+   -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true`
+  → 약 70MB, .NET 런타임 포함. 받는 사람은 설치 없이 exe만 더블클릭.
+- **체크리스트를 어셈블리에 내장**(`LawReview.Core.csproj`의 EmbeddedResource) — `ChecklistLoader.LoadDefault()`가
+  실행폴더 `checklists/standard.json`을 우선하고 없으면 내장 사본 사용. 단일 exe에서 폴더 없이 동작(테스트로 강제).
+- **Claude 키 없이도 실행 가능**: `OfflineJudgmentProvider`가 AI 판정을 "확인필요"로 대체(조문 인용·계산·검토서는 정상).
+- 협력체 안내: `DEPLOY.md`(키 발급 절차·신뢰 범위 포함).
+- **빌드된 exe는 사용자 PC `C:\Tools\lawreview-dist\LawReview.App.exe`에 배치** (git엔 미포함 — 70MB).
+
 ## 5. 현재 상태의 한계 (다음 세션이 제일 먼저 알아야 할 것)
 
 - ~~법제처 API 실호출 미검증~~ → **완료 (2026-07-19).** 실응답 픽스처 테스트가 회귀를 막는다.
 - **Claude 판정은 여전히 실 호출 미검증** (프롬프트·파싱 로직만 테스트됨). CLI 러너는
-  ANTHROPIC_API_KEY 환경변수가 있으면 실제 판정을 쓴다.
-- WinForms는 컴파일 검증만 (실행 화면 미확인 — 윈도우에서 `dotnet run --project src/LawReview.App`).
+  ANTHROPIC_API_KEY 환경변수가 있으면 실제 판정을 쓴다. 사용자가 앱 설정에 Claude 키를 넣고
+  실제 판정 품질(사유가 조문 근거를 제대로 짚는지)을 확인하는 것이 다음 검증 포인트.
+- WinForms는 **실행·검토서 생성까지 확인 완료**(둔곡 예시, offline 판정). 실 Claude 판정 화면은 미확인.
 - 지구단위계획은 **후보 구역 목록**까지만 자동 (법정동 키워드 검색). 필지→구역 정확 대응은
   지도(WFS) 연동 필요 — 포털 지도 서비스는 ArcGIS proxy(`/proxy/proxy.jsp`) 경유라 추후 검토.
 - 서울 외 지자체(대전 등)의 지구단위계획 포털은 미구현 — `IDistrictPlanProvider` 구현 추가 방식.
+- VWorld "자동조회"는 지번 주소만 인식(도로명 주소 미지원). 키 발급 도메인과 서비스 URL 불일치 시 실패.
 
 ## 6. 다음 작업 (우선순위 순)
 
-### 3단계 마무리·확장 (지자체 문서 수집)
+### 검증 (사용자 피드백 대기)
+
+- 앱에 Claude 키 넣고 실제 AI 판정 품질 확인 → 판정 프롬프트 튜닝 (현재 미검증 영역)
+- 생성 검토서 서식 세부 조정 (사용자 피드백 반영)
+
+### 3단계 확장 (지자체 문서 수집)
 
 - 고시문 PDF 텍스트 파싱 → 결정조서·지침 본문 추출 (대형 PDF, 도면 페이지 혼재 — 텍스트
   레이어 유무 확인 필요. 도면 규제는 계속 "확인필요" + 원본 링크, 원칙 5)
 - 심의기준·경관가이드도 같은 파이프라인 재사용 (소스 URL 등록 방식)
-- 결정고시 전문검색(`결정고시` 메뉴, target=ntfcList)은 필요 시 추가
-
-### 4단계: 토지이음 색인 연계
-
-- 주소 → 용도지역·지구 + 관련 모법 목록 자동 조회 (공공데이터포털 토지이용계획 API 검토)
-- **색인만.** 개략 검토 내용 인용 금지 (원칙 2)
-
-### 5단계: 마무리·배포
-
-- WinForms 실행 화면 다듬기 (윈도우에서 확인), 입력 검증 강화
-- exe 배포 + 협력체용 안내 문서 (키 발급 절차 포함)
-- 검토서 서식 세부 조정 (사용자 피드백 반영)
+- 서울 외 지자체 `IDistrictPlanProvider` 구현 추가
 
 ### 이후 (사용자와 논의 후)
 

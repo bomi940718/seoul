@@ -12,6 +12,8 @@
 
   <ItemGroup>
     <None Include="checklists\*.json" CopyToOutputDirectory="PreserveNewest" />
+    <!-- 단일 exe 배포에서도 체크리스트를 찾을 수 있도록 어셈블리에 내장한다. -->
+    <EmbeddedResource Include="checklists\standard.json" />
   </ItemGroup>
 
   <ItemGroup>

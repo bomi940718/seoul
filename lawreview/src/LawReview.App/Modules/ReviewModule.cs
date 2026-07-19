@@ -246,8 +246,7 @@ public sealed class ReviewModule : IAppModule
         _log.Clear();
         try
         {
-            var checklistPath = Path.Combine(AppContext.BaseDirectory, "checklists", "standard.json");
-            var checklist = ChecklistLoader.Load(checklistPath);
+            var checklist = ChecklistLoader.LoadDefault();
 
             var moleg = new MolegClient(Http, settings.MolegApiKey);
             IJudgmentProvider judge = settings.ClaudeApiKey.Length > 0

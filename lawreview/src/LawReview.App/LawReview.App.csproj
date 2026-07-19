@@ -7,6 +7,11 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyTitle>법규검토서 생성기</AssemblyTitle>
+    <Product>법규검토서 생성기</Product>
+    <AssemblyVersion>0.5.0.0</AssemblyVersion>
+    <FileVersion>0.5.0.0</FileVersion>
+    <Version>0.5.0</Version>
+    <Company>LawReview</Company>
     <!-- 협력체 배포용 단일 exe: dotnet publish -c Release -r win-x64 (self-contained, PublishSingleFile) -->
     <!-- UseWindowsForms 대신 FrameworkReference를 직접 참조한다:
          리눅스 CI의 Canonical SDK에는 WindowsDesktop 타겟이 없어도 이 방식이면 크로스 빌드된다.
