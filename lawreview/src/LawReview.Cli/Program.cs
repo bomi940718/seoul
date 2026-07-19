@@ -32,6 +32,23 @@ if (args.Length >= 2 && args[0] == "--districtplan")
     return 0;
 }
 
+// --landuse <지번주소>: VWorld 토지이음 색인 단독 실행 (환경변수 VWORLD_KEY, VWORLD_DOMAIN)
+if (args.Length >= 2 && args[0] == "--landuse")
+{
+    var vwKey = Environment.GetEnvironmentVariable("VWORLD_KEY") ?? "";
+    if (vwKey.Length == 0) { Console.Error.WriteLine("환경변수 VWORLD_KEY가 필요합니다."); return 1; }
+    using var vwHttp = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
+    var vworld = new LawReview.Core.LandUse.VworldClient(vwHttp, vwKey,
+        Environment.GetEnvironmentVariable("VWORLD_DOMAIN") ?? "http://localhost");
+    var index = await vworld.GetLandUseIndexAsync(args[1]);
+    if (index is null) { Console.WriteLine("PNU를 찾지 못했습니다 — 지번 주소인지 확인하세요."); return 2; }
+    Console.WriteLine($"주소: {index.RefinedAddress}");
+    Console.WriteLine($"PNU:  {index.Pnu}");
+    Console.WriteLine($"용도지역·지구 ({index.Zones.Count}):");
+    foreach (var z in index.Zones) Console.WriteLine($"  - {z}");
+    return 0;
+}
+
 var oc = args.Length > 0 ? args[0] : Environment.GetEnvironmentVariable("LAWREVIEW_OC");
 if (string.IsNullOrWhiteSpace(oc))
 {
@@ -146,10 +163,3 @@ static string FindRepoFile(string relative)
     throw new FileNotFoundException(relative);
 }
 
-/// <summary>Claude 키 없이 파이프라인을 돌릴 때의 판정 자리표시자.</summary>
-file sealed class OfflineJudgmentProvider : IJudgmentProvider
-{
-    public Task<Judgment> JudgeAsync(ChecklistItem item, IReadOnlyList<CitedArticle> articles,
-        ProjectInput project, CancellationToken ct = default) =>
-        Task.FromResult(new Judgment(Applicability.확인필요, "AI 판정 미실행 (검증 러너 — Claude 키 없음)."));
-}

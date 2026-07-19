@@ -50,6 +50,7 @@ public sealed class ReviewModule : IAppModule
         Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical, Dock = DockStyle.Fill,
     };
     private readonly Button _runButton = new() { Text = "검토 실행 → 검토서 저장", Height = 40 };
+    private readonly Button _sampleButton = new() { Text = "예시 입력 (둔곡 공장)", Height = 40, Width = 160 };
 
     public Control CreateControl()
     {
@@ -62,13 +63,19 @@ public sealed class ReviewModule : IAppModule
         root.Panel1.Controls.Add(top);
 
         // 하단: 실행 버튼 + 로그
-        var bottom = new TableLayoutPanel { Dock = DockStyle.Fill, RowCount = 2 };
+        var bottom = new TableLayoutPanel { Dock = DockStyle.Fill, RowCount = 2, ColumnCount = 2 };
         bottom.RowStyles.Add(new RowStyle(SizeType.Absolute, 48));
         bottom.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        bottom.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 170));
+        bottom.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        _sampleButton.Dock = DockStyle.Fill;
+        _sampleButton.Click += (_, _) => FillSample();
         _runButton.Dock = DockStyle.Fill;
         _runButton.Click += OnRunClicked;
-        bottom.Controls.Add(_runButton, 0, 0);
+        bottom.Controls.Add(_sampleButton, 0, 0);
+        bottom.Controls.Add(_runButton, 1, 0);
         bottom.Controls.Add(_log, 0, 1);
+        bottom.SetColumnSpan(_log, 2);
         root.Panel2.Controls.Add(bottom);
 
         return root;
@@ -96,7 +103,17 @@ public sealed class ReviewModule : IAppModule
         AddRow("대지위치 (지번)", _address);
         AddRow("광역 지자체", _province);       // 예: 대전광역시
         AddRow("기초 지자체", _city);           // 예: 유성구
-        AddRow("지역/지구 (쉼표 구분)", _useZones);
+
+        // 지역/지구: 직접 입력 + VWorld 토지이음 색인으로 자동 채움 (이름 색인만 — 원칙 2)
+        var zoneRow = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, Margin = new Padding(0) };
+        zoneRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        zoneRow.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 100));
+        _useZones.Dock = DockStyle.Fill;
+        var zoneLookup = new Button { Text = "자동조회", Dock = DockStyle.Fill, Margin = new Padding(2, 0, 0, 0) };
+        zoneLookup.Click += OnZoneLookupClicked;
+        zoneRow.Controls.Add(_useZones, 0, 0);
+        zoneRow.Controls.Add(zoneLookup, 1, 0);
+        AddRow("지역/지구 (쉼표 구분)", zoneRow);
         AddRow("대지면적 (㎡)", _siteArea);
         AddRow("용도", _primaryUse);
         AddRow("건축면적 (㎡)", _buildingArea);
@@ -150,6 +167,44 @@ public sealed class ReviewModule : IAppModule
         }
     }
 
+    /// <summary>대지위치 주소로 용도지역·지구를 조회해 지역/지구 입력란을 채운다 (VWorld 색인).</summary>
+    private async void OnZoneLookupClicked(object? sender, EventArgs e)
+    {
+        var settings = AppSettings.Load();
+        if (settings.VworldApiKey.Length == 0)
+        {
+            MessageBox.Show("설정 탭에서 VWorld 키를 먼저 입력하세요. (www.vworld.kr 무료 발급)\n" +
+                            "키 없이 쓰려면 지역/지구를 직접 입력하면 됩니다.",
+                "설정 필요", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
+        }
+        if (_address.Text.Trim().Length == 0)
+        {
+            MessageBox.Show("대지위치(지번 주소)를 먼저 입력하세요.", "입력 확인",
+                MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
+        }
+
+        try
+        {
+            var vworld = new LawReview.Core.LandUse.VworldClient(Http, settings.VworldApiKey, settings.VworldDomain);
+            var index = await vworld.GetLandUseIndexAsync(_address.Text.Trim());
+            if (index is null || index.Zones.Count == 0)
+            {
+                _log.AppendText($"{DateTime.Now:HH:mm:ss}  용도지역 조회 결과 없음 — 지번 주소인지 확인하세요.\r\n");
+                return;
+            }
+            _useZones.Text = string.Join(", ", index.Zones);
+            _log.AppendText($"{DateTime.Now:HH:mm:ss}  용도지역 자동조회 (PNU {index.Pnu}): {_useZones.Text}\r\n");
+        }
+        catch (Exception ex)
+        {
+            _log.AppendText($"{DateTime.Now:HH:mm:ss}  용도지역 조회 실패: {ex.Message}\r\n");
+            MessageBox.Show($"용도지역 조회에 실패했습니다: {ex.Message}", "조회 실패",
+                MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        }
+    }
+
     private async void OnRunClicked(object? sender, EventArgs e)
     {
         var settings = AppSettings.Load();
@@ -159,10 +214,13 @@ public sealed class ReviewModule : IAppModule
                 "설정 필요", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return;
         }
-        if (settings.ClaudeApiKey.Length == 0)
+        if (settings.ClaudeApiKey.Length == 0
+            && MessageBox.Show(
+                "Claude API 키가 없습니다. AI 판정 없이 진행할까요?\n" +
+                "(조문 인용·건폐율/용적률/주차 계산·검토서 생성은 그대로 동작하고,\n" +
+                " AI 판정 항목은 전부 \"확인필요\"로 표시됩니다.)",
+                "AI 판정 생략", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes)
         {
-            MessageBox.Show("설정 탭에서 Claude API 키를 먼저 입력하세요.",
-                "설정 필요", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return;
         }
 
@@ -192,7 +250,9 @@ public sealed class ReviewModule : IAppModule
             var checklist = ChecklistLoader.Load(checklistPath);
 
             var moleg = new MolegClient(Http, settings.MolegApiKey);
-            var judge = new ClaudeJudgmentProvider(Http, settings.ClaudeApiKey, settings.ClaudeModel);
+            IJudgmentProvider judge = settings.ClaudeApiKey.Length > 0
+                ? new ClaudeJudgmentProvider(Http, settings.ClaudeApiKey, settings.ClaudeModel)
+                : new OfflineJudgmentProvider();
             var progress = new Progress<string>(msg => _log.AppendText($"{DateTime.Now:HH:mm:ss}  {msg}\r\n"));
 
             // 지구단위계획 조회 — 구현된 지자체(서울)만 제공자가 붙고, 그 외는 기존 수동 안내 유지.
@@ -219,6 +279,34 @@ public sealed class ReviewModule : IAppModule
         {
             _runButton.Enabled = true;
         }
+    }
+
+    /// <summary>테스트 검증 기준인 실무 검토서(대전 둔곡, 2023) 입력을 채운다 — 결과를 바로 눈으로 확인하는 용도.</summary>
+    private void FillSample()
+    {
+        _projectName.Text = "세이퍼존 둔곡 공장";
+        _client.Text = "(주)세이퍼존";
+        _address.Text = "대전광역시 유성구 둔곡동 407-5";
+        _province.Text = "대전광역시";
+        _city.Text = "유성구";
+        _useZones.Text = "도시지역, 일반공업지역, 지구단위계획구역(국제과학비즈니스벨트 거점지구)";
+        _siteArea.Text = "6030.10";
+        _primaryUse.Text = "공장";
+        _buildingArea.Text = "1453.22";
+        _floorsAbove.Value = 2;
+        _floorsBelow.Value = 0;
+        _maxCoverage.Text = "70";
+        _maxFar.Text = "350";
+        _maxFloors.Text = "7";
+        _zoningSource.Text = "국제과학비즈니스벨트 거점지구단위계획";
+        _parkingAreaPerSpace.Text = "200";
+        _parkingSource.Text = "대전광역시 주차장 조례 제16조";
+
+        _areaGrid.Rows.Clear();
+        _areaGrid.Rows.Add("A(공장동)", "PIT", "공장", "", "110.06", true);
+        _areaGrid.Rows.Add("A(공장동)", "1층", "공장", "926.81", "241.07", false);
+        _areaGrid.Rows.Add("A(공장동)", "2층", "공장", "1110.72", "187.03", false);
+        _areaGrid.Rows.Add("B(경비동)", "1층", "경비실", "18.80", "", false);
     }
 
     private ProjectInput CollectInput()

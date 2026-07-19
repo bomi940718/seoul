@@ -91,7 +91,21 @@ Claude 판정만 미검증(키 없음 — 러너가 "확인필요"로 대체).
 - 단독 실행: `dotnet run --project src/LawReview.Cli -- --districtplan 봉천동 [저장.pdf]`
 - 실검증: 봉천동 8개 구역 조회 + 고시문 PDF(22MB) 다운로드 성공
 
-### 테스트 — 41건 전부 통과
+### 4단계 — 토지이음 색인 (2026-07-19)
+
+`src/LawReview.Core/LandUse/VworldClient.cs` — 브이월드(VWorld) 국토정보플랫폼 연동.
+**역할은 색인만** (검토 품질 원칙 2 — 개략 검토 내용은 검토서에 인용 금지):
+
+- 지번 주소 → PNU(19자리): `api.vworld.kr/req/address` (getCoord, type=PARCEL)
+- PNU → 용도지역·지구·구역 이름 목록: `api.vworld.kr/ned/data/getLandUseAttr` (cnflcAt=1)
+- 앱 연동: 대지위치 옆 **"자동조회" 버튼** → 지역/지구 입력란을 자동으로 채움
+- 키는 www.vworld.kr 무료 발급, 발급 시 등록한 **서비스 URL(domain)** 과 일치해야 NED API 동작.
+  설정 탭에 VWorld 키·서비스 URL 입력란 추가 (없으면 지역/지구 직접 입력 — 선택 기능)
+- 단독 실행: `VWORLD_KEY=... dotnet run --project src/LawReview.Cli -- --landuse "대전광역시 유성구 둔곡동 407-5"`
+- 실검증: 둔곡 407-5 → 용도지역 6건(도시지역·일반공업지역·지구단위계획구역 등, 실무 검토서와 일치),
+  서울 봉천동 857-1 → 9건. 응답 필드는 cadastral-mcp(사용자의 기존 도구)와 동일 구조 확인
+
+### 테스트 — 44건 전부 통과
 
 검증 기준이 **실제 실무 검토서(둔곡)의 수치**: 연면적 2,484.43㎡(PIT 제외), 건폐율 24.10%, 법정 건축면적 4,221.07㎡, 주차 12.42→12대, 장애인 0.36→1대.
 파싱 테스트는 실 API 캡처 픽스처(`tests/LawReview.Core.Tests/Fixtures/`) 기반.
@@ -110,8 +124,9 @@ seoul/  (bomi940718/seoul, 브랜치 claude/korean-law-review-automation-fkmgrh)
    ├─ HANDOFF.md          ← 이 문서
    ├─ README.md           ← 아키텍처·빌드·로드맵
    ├─ LawReview.sln
-   ├─ src/LawReview.Core/
-   ├─ src/LawReview.App/
+   ├─ src/LawReview.Core/   (LawApi·Review·Ai·Report·Municipal·LandUse)
+   ├─ src/LawReview.App/    (WinForms 배포 대상)
+   ├─ src/LawReview.Cli/    (개발·검증용 콘솔 러너 — 배포 대상 아님)
    └─ tests/LawReview.Core.Tests/
 ```
 

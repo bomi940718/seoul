@@ -12,6 +12,8 @@ public sealed class SettingsModule : IAppModule
     private readonly TextBox _molegKey = new() { UseSystemPasswordChar = true };
     private readonly TextBox _claudeKey = new() { UseSystemPasswordChar = true };
     private readonly TextBox _claudeModel = new();
+    private readonly TextBox _vworldKey = new() { UseSystemPasswordChar = true };
+    private readonly TextBox _vworldDomain = new();
 
     public Control CreateControl()
     {
@@ -19,6 +21,8 @@ public sealed class SettingsModule : IAppModule
         _molegKey.Text = settings.MolegApiKey;
         _claudeKey.Text = settings.ClaudeApiKey;
         _claudeModel.Text = settings.ClaudeModel;
+        _vworldKey.Text = settings.VworldApiKey;
+        _vworldDomain.Text = settings.VworldDomain;
 
         var panel = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, Padding = new Padding(12) };
         panel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 200));
@@ -46,6 +50,9 @@ public sealed class SettingsModule : IAppModule
         AddRow("Claude API 키", _claudeKey,
             "console.anthropic.com에서 발급. 적용/해당없음 판정에 사용되며 호출량만큼 과금됩니다.");
         AddRow("Claude 모델", _claudeModel, "기본값: claude-sonnet-5");
+        AddRow("VWorld 키 (선택)", _vworldKey,
+            "www.vworld.kr에서 무료 발급. '용도지역 자동조회' 버튼에 사용됩니다. 없으면 지역/지구를 직접 입력하세요.");
+        AddRow("VWorld 서비스 URL", _vworldDomain, "VWorld 키 발급 시 등록한 서비스 URL. 기본값: http://localhost");
 
         var save = new Button { Text = "저장", Width = 120, Height = 34 };
         save.Click += (_, _) =>
@@ -55,6 +62,8 @@ public sealed class SettingsModule : IAppModule
                 MolegApiKey = _molegKey.Text.Trim(),
                 ClaudeApiKey = _claudeKey.Text.Trim(),
                 ClaudeModel = _claudeModel.Text.Trim().Length > 0 ? _claudeModel.Text.Trim() : "claude-sonnet-5",
+                VworldApiKey = _vworldKey.Text.Trim(),
+                VworldDomain = _vworldDomain.Text.Trim().Length > 0 ? _vworldDomain.Text.Trim() : "http://localhost",
             };
             s.Save();
             MessageBox.Show("설정을 저장했습니다.", "저장 완료", MessageBoxButtons.OK, MessageBoxIcon.Information);
