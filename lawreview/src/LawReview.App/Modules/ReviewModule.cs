@@ -189,13 +189,36 @@ public sealed class ReviewModule : IAppModule
         {
             var vworld = new LawReview.Core.LandUse.VworldClient(Http, settings.VworldApiKey, settings.VworldDomain);
             var index = await vworld.GetLandUseIndexAsync(_address.Text.Trim());
-            if (index is null || index.Zones.Count == 0)
+            if (index is null)
             {
-                _log.AppendText($"{DateTime.Now:HH:mm:ss}  용도지역 조회 결과 없음 — 지번 주소인지 확인하세요.\r\n");
+                _log.AppendText($"{DateTime.Now:HH:mm:ss}  조회 결과 없음 — 지번 주소인지 확인하세요 (도로명 주소는 인식되지 않습니다).\r\n");
                 return;
             }
-            _useZones.Text = string.Join(", ", index.Zones);
-            _log.AppendText($"{DateTime.Now:HH:mm:ss}  용도지역 자동조회 (PNU {index.Pnu}): {_useZones.Text}\r\n");
+
+            // 땅에 딸린 사실만 채운다. 건축면적·면적표는 설계 결과물이라 사용자가 입력한다.
+            var filled = new List<string>();
+            if (index.Zones.Count > 0)
+            {
+                _useZones.Text = string.Join(", ", index.Zones);
+                filled.Add($"지역/지구 {index.Zones.Count}건");
+            }
+            if (index.Area is double area)
+            {
+                _siteArea.Text = area.ToString("0.##");
+                filled.Add($"대지면적 {area:N2}㎡" + (index.Category.Length > 0 ? $" ({index.Category})" : ""));
+            }
+            if (index.Province.Length > 0)
+            {
+                _province.Text = index.Province;
+                _city.Text = index.City;
+                filled.Add($"지자체 {index.Province} {index.City}");
+            }
+
+            _log.AppendText(filled.Count > 0
+                ? $"{DateTime.Now:HH:mm:ss}  자동조회 완료 (PNU {index.Pnu}) — {string.Join(" / ", filled)}\r\n"
+                : $"{DateTime.Now:HH:mm:ss}  자동조회: 채울 정보를 찾지 못했습니다 (PNU {index.Pnu}).\r\n");
+            if (index.Zones.Count > 0)
+                _log.AppendText($"{DateTime.Now:HH:mm:ss}    지역/지구: {_useZones.Text}\r\n");
         }
         catch (Exception ex)
         {

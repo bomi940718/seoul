@@ -42,8 +42,12 @@ if (args.Length >= 2 && args[0] == "--landuse")
         Environment.GetEnvironmentVariable("VWORLD_DOMAIN") ?? "http://localhost");
     var index = await vworld.GetLandUseIndexAsync(args[1]);
     if (index is null) { Console.WriteLine("PNU를 찾지 못했습니다 — 지번 주소인지 확인하세요."); return 2; }
-    Console.WriteLine($"주소: {index.RefinedAddress}");
-    Console.WriteLine($"PNU:  {index.Pnu}");
+    Console.WriteLine($"주소:     {index.RefinedAddress}");
+    Console.WriteLine($"PNU:      {index.Pnu}");
+    Console.WriteLine($"지자체:   {index.Province} / {index.City}");
+    Console.WriteLine(index.Area is double a
+        ? $"대지면적: {a:N2} ㎡ ({index.Category})"
+        : "대지면적: (조회 실패 — 직접 입력 필요)");
     Console.WriteLine($"용도지역·지구 ({index.Zones.Count}):");
     foreach (var z in index.Zones) Console.WriteLine($"  - {z}");
     return 0;
