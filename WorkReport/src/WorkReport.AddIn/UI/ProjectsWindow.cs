@@ -30,6 +30,9 @@ namespace WorkReport.AddIn.UI
         private readonly TextBlock _scanStatus = new TextBlock { Foreground = Brushes.Gray, FontSize = 11 };
         private readonly Button _scanButton = new Button { Content = "일지에서 미등록 키 검색", Padding = new Thickness(10, 4, 10, 4) };
 
+        /// <summary>저장하고 닫혔는지. DialogResult는 ShowDialog로 띄운 창에서만 대입할 수 있어 사용하지 않는다.</summary>
+        public bool Saved { get; private set; }
+
         public ProjectsWindow(LocalSettings settings)
         {
             _settings = settings;
@@ -352,20 +355,24 @@ namespace WorkReport.AddIn.UI
                 Logger.Warn("projects.json 외부 변경 감지 → 사용자 선택으로 덮어쓰기");
             }
 
+            // 저장 실패만 오류로 보고한다. 창을 닫는 과정의 문제까지 같은 try에 넣으면
+            // 파일이 이미 기록됐는데도 "저장하지 못했습니다"라고 잘못 알리게 된다.
             try
             {
                 _registry.Projects = cleaned;
                 _registry.Save();
                 Logger.Info($"projects.json 저장: {cleaned.Count}건 (활성 {cleaned.Count(p => p.Active)}건)");
-                DialogResult = true;
-                Close();
             }
             catch (Exception ex)
             {
                 Logger.Error("projects.json 저장 실패", ex);
                 MessageBox.Show("프로젝트 목록을 저장하지 못했습니다: " + ex.Message,
                     "워크리포트", MessageBoxButton.OK, MessageBoxImage.Error);
+                return;
             }
+
+            Saved = true;
+            Close();
         }
     }
 }

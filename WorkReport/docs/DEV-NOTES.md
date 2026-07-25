@@ -78,7 +78,11 @@ DAY 기준 상대 오프셋(+1~+10)을 기본값으로, 헤더 텍스트(메일/
 - 창은 XAML 없이 **코드로 구성**(기존 `ResultWindow` 방식 유지) — 애드인 어셈블리를 가볍게 두고
   Excel-DNA 패킹 대상 파일 수를 늘리지 않기 위함.
 - `WindowHelper.ShowOverExcel`: `ExcelDnaUtil.WindowHandle`을 Owner로 지정해 창이 Excel 뒤로
-  숨는 것을 방지. **세 창 모두 `ShowDialog`로만 띄울 것** — `OnSave`가 `DialogResult`를 대입한다.
+  숨는 것을 방지.
+- **`DialogResult`는 쓰지 않는다.** `Show()`로 띄운 창에 대입하면 예외가 나는데,
+  저장 성공 직후 대입하는 구조라 "저장하지 못했습니다"라는 **거짓 오류 메시지**가 뜬다
+  (파일은 이미 기록된 상태). 대신 `Saved` 속성을 두고, 저장 실패만 오류로 보고하도록
+  try 범위를 `Save()` 호출로 좁혔다. 창 결과가 필요하면 `Saved`를 읽을 것.
 - 폴더 선택은 WPF에 대화상자가 없어 `System.Windows.Forms.FolderBrowserDialog` 사용
   → csproj에 `UseWindowsForms=true` 추가.
 - 프로젝트 관리 창의 미등록 키 스캔은 일지 파싱(수 초)이라 `Task.Run` +
@@ -98,6 +102,9 @@ Excel 없이 창을 검증하려면 **스크래치패드 하네스**(저장소 �
 - 주의 2: GUI 앱은 PowerShell `&`가 **대기하지 않는다** → `Start-Process -Wait` 필요.
 - 주의 3: PowerShell에서 WPF를 직접 호스팅하면 `AssemblyResolve` 훅 때문에
   StackOverflow가 나므로, 위 하네스 방식이 안정적이다.
+- 주의 4: 하네스가 `OnSave` 같은 이벤트 핸들러를 직접 호출하면, 그 안의 `MessageBox`가
+  **사용자 화면에 실제로 뜬다**(모달이라 프로세스도 대기). 위 DialogResult 문제는 이 방식으로
+  발견됐다 — 자동 검증이 사용자 화면을 건드릴 수 있음을 염두에 둘 것.
 - 결과: 프로젝트 5건 로드·상태 콤보·미등록 키 11종(레코드 741건)이 ParseCheck 기준선과 일치.
   저장 경로는 정규화 결과까지 projects.json에서 확인.
 

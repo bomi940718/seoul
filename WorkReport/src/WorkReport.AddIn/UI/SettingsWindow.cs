@@ -23,6 +23,9 @@ namespace WorkReport.AddIn.UI
         private readonly TextBox _sheetName = new TextBox();
         private readonly CheckBox _autoRefresh = new CheckBox { Content = "내 일지를 저장할 때 리포트를 자동으로 갱신 (결과 창 없이 조용히 실행)" };
 
+        /// <summary>저장하고 닫혔는지. DialogResult는 ShowDialog로 띄운 창에서만 대입할 수 있어 사용하지 않는다.</summary>
+        public bool Saved { get; private set; }
+
         public SettingsWindow()
         {
             _settings = LocalSettings.Load();
@@ -215,6 +218,7 @@ namespace WorkReport.AddIn.UI
                 if (answer != MessageBoxResult.Yes) return;
             }
 
+            // 저장 실패만 오류로 보고한다 (ProjectsWindow와 동일한 이유)
             try
             {
                 _settings.MyJournalPath = _myPath.Text.Trim();
@@ -228,15 +232,17 @@ namespace WorkReport.AddIn.UI
                 _settings.Save();
 
                 Logger.Info($"설정 저장 (자동 갱신 {( _settings.AutoRefreshOnSave ? "켜짐" : "꺼짐")}, 시트 {_settings.EffectiveSheetName})");
-                DialogResult = true;
-                Close();
             }
             catch (Exception ex)
             {
                 Logger.Error("설정 저장 실패", ex);
                 MessageBox.Show("설정을 저장하지 못했습니다: " + ex.Message,
                     "워크리포트", MessageBoxButton.OK, MessageBoxImage.Error);
+                return;
             }
+
+            Saved = true;
+            Close();
         }
     }
 }
