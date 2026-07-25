@@ -5,6 +5,8 @@
     <LangVersion>7.3</LangVersion>
     <RootNamespace>WorkReport.AddIn</RootNamespace>
     <UseWPF>true</UseWPF>
+    <!-- 설정 창의 폴더 선택(FolderBrowserDialog)용 — WPF에는 폴더 대화상자가 없음 -->
+    <UseWindowsForms>true</UseWindowsForms>
     <!-- Excel-DNA: 32/64비트 xll 모두 생성 (실측: 사용자 PC Excel은 x86 — 설치 시 비트 맞는 쪽 사용).
          리본(ComServer)·패킹 참조는 WorkReport-AddIn.dna 템플릿에서 정의 -->
     <ExcelAddInFileName>WorkReport-AddIn</ExcelAddInFileName>

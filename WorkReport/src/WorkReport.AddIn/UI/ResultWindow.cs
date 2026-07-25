@@ -49,8 +49,8 @@ namespace WorkReport.AddIn.UI
             // 프로젝트별 행 수
             var list = new ListView { ItemsSource = result.Projects };
             var gv = new GridView();
-            gv.Columns.Add(MakeColumn("넘버", nameof(ProjectSummary.Number), 140));
-            gv.Columns.Add(MakeColumn("이름", nameof(ProjectSummary.Name), 170));
+            gv.Columns.Add(MakeColumn("넘버", nameof(ProjectSummary.Number), 175));
+            gv.Columns.Add(MakeColumn("이름", nameof(ProjectSummary.Name), 160));
             gv.Columns.Add(MakeColumn("본인", nameof(ProjectSummary.MyCount), 55));
             gv.Columns.Add(MakeColumn("협업자", nameof(ProjectSummary.PartnerCount), 55));
             gv.Columns.Add(MakeColumn("합계", nameof(ProjectSummary.Total), 55));
@@ -62,8 +62,9 @@ namespace WorkReport.AddIn.UI
             var notices = new StackPanel { Margin = new Thickness(0, 10, 0, 0), MaxHeight = 140 };
             if (result.UnregisteredKeys.Count > 0)
             {
+                // 원본 키에 셀 내 줄바꿈이 있어도 한 줄 흐름이 끊기지 않게 공백으로 정리해 표시
                 string keys = string.Join(", ",
-                    result.UnregisteredKeys.Select(k => $"{k.Number}({k.Count}건)"));
+                    result.UnregisteredKeys.Select(k => $"{CollapseSpace(k.Number)}({k.Count}건)"));
                 notices.Children.Add(new TextBlock
                 {
                     Text = "미등록 프로젝트 키: " + keys + " — [프로젝트 관리]에서 등록하세요.",
@@ -117,6 +118,9 @@ namespace WorkReport.AddIn.UI
 
             Content = root;
         }
+
+        private static string CollapseSpace(string s)
+            => System.Text.RegularExpressions.Regex.Replace(s ?? "", @"\s+", " ").Trim();
 
         private static GridViewColumn MakeColumn(string header, string property, double width)
         {

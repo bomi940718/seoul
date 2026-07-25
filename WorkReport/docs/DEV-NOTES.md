@@ -72,3 +72,36 @@ DAY 기준 상대 오프셋(+1~+10)을 기본값으로, 헤더 텍스트(메일/
     (일반관리 194 / 개인관리 148 / BRANDING-1 41 / OFFLINE_DEC 60 / 평택 13, 미등록 11종,
     출력 루트 복사·경고 처리 정상)
 - 리본의 [프로젝트 관리]·[설정] 버튼은 5단계 구현 전까지 안내 문구만 표시.
+
+## 8. 5단계(WPF 창) 확정 사항
+
+- 창은 XAML 없이 **코드로 구성**(기존 `ResultWindow` 방식 유지) — 애드인 어셈블리를 가볍게 두고
+  Excel-DNA 패킹 대상 파일 수를 늘리지 않기 위함.
+- `WindowHelper.ShowOverExcel`: `ExcelDnaUtil.WindowHandle`을 Owner로 지정해 창이 Excel 뒤로
+  숨는 것을 방지. **세 창 모두 `ShowDialog`로만 띄울 것** — `OnSave`가 `DialogResult`를 대입한다.
+- 폴더 선택은 WPF에 대화상자가 없어 `System.Windows.Forms.FolderBrowserDialog` 사용
+  → csproj에 `UseWindowsForms=true` 추가.
+- 프로젝트 관리 창의 미등록 키 스캔은 일지 파싱(수 초)이라 `Task.Run` +
+  `TaskScheduler.FromCurrentSynchronizationContext()`로 UI 스레드에 반영.
+  이를 위해 `RefreshService.ParseJournals`를 public으로 분리(갱신 파이프라인과 공용).
+- 저장 시 정규화: 넘버·이름 Trim, 빈 그룹 → `ETC`, 빈/이상 상태 → `진행`,
+  공백뿐인 개별 출력 폴더 → `null`. 넘버 누락·중복(정규화 기준)은 저장 차단.
+- `HasExternalChange()` 감지 시 [덮어쓰기 / 재로드] 선택 대화상자 — 락은 여전히 사용하지 않음.
+
+### 검증 방법 (2026-07-25)
+
+Excel 없이 창을 검증하려면 **스크래치패드 하네스**(저장소 미포함, net48 WinExe,
+`WorkReport.AddIn.csproj`를 ProjectReference)를 만들어 창을 화면 밖(-4000,-4000)에 실제로
+`Show()`한 뒤 `RenderTargetBitmap`으로 PNG 캡처했다. Loaded 이벤트(스캔)까지 실동작한다.
+
+- 주의 1: WinExe는 콘솔이 없어 `Console.WriteLine`이 보이지 않는다 → 파일 로그 사용.
+- 주의 2: GUI 앱은 PowerShell `&`가 **대기하지 않는다** → `Start-Process -Wait` 필요.
+- 주의 3: PowerShell에서 WPF를 직접 호스팅하면 `AssemblyResolve` 훅 때문에
+  StackOverflow가 나므로, 위 하네스 방식이 안정적이다.
+- 결과: 프로젝트 5건 로드·상태 콤보·미등록 키 11종(레코드 741건)이 ParseCheck 기준선과 일치.
+  저장 경로는 정규화 결과까지 projects.json에서 확인.
+
+### 빌드 주의
+
+애드인이 Excel에 로드된 상태에서는 `publish\*-packed.xll`이 잠겨 패킹이 실패한다.
+Excel을 닫거나 `-p:RunExcelDnaPack=false`로 컴파일만 검증할 것.

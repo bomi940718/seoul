@@ -96,28 +96,7 @@ namespace WorkReport.AddIn.Services
             if (registry.Projects.Count == 0)
                 result.Warnings.Add("등록된 프로젝트가 없습니다. [프로젝트 관리]에서 프로젝트를 등록하세요.");
 
-            string sheet = settings.EffectiveSheetName;
-            var allRecords = new List<WorkRecord>();
-            var sources = new[]
-            {
-                new { Path = settings.MyJournalPath, Author = settings.MyAuthorName, Index = 0, Label = "내 일지" },
-                new { Path = settings.PartnerJournalPath, Author = settings.PartnerAuthorName, Index = 1, Label = "협업자 일지" },
-            };
-            foreach (var src in sources)
-            {
-                if (string.IsNullOrWhiteSpace(src.Path))
-                {
-                    result.Warnings.Add($"{src.Label} 경로가 비어 있어 건너뜁니다.");
-                    continue;
-                }
-                var parsed = ParseWithRetry(src.Path, sheet, src.Author, src.Index, src.Label, result.Warnings);
-                if (parsed != null)
-                {
-                    allRecords.AddRange(parsed.Records);
-                    foreach (var w in parsed.Warnings) result.Warnings.Add($"{src.Label}: {w}");
-                    Logger.Info($"{src.Label} 파싱 완료: {parsed.Records.Count}건 (시트 {parsed.SheetName})");
-                }
-            }
+            var allRecords = ParseJournals(settings, result.Warnings);
 
             var reportData = ReportBuilder.Build(allRecords, registry.Projects);
             result.UnregisteredKeys = ReportBuilder.FindUnregisteredKeys(allRecords, registry.Projects);
@@ -187,6 +166,37 @@ namespace WorkReport.AddIn.Services
 
             Logger.Info($"===== 리포트 갱신 완료: 프로젝트 {result.Projects.Count}건, 경고 {result.Warnings.Count}건 =====");
             return result;
+        }
+
+        /// <summary>
+        /// 설정의 일지 2개를 파싱해 레코드를 합친다 (프로젝트 관리 창의 미등록 키 스캔에서도 사용).
+        /// 읽기 실패는 경고로만 남기고 계속 진행한다.
+        /// </summary>
+        public static List<WorkRecord> ParseJournals(LocalSettings settings, List<string> warnings)
+        {
+            string sheet = settings.EffectiveSheetName;
+            var allRecords = new List<WorkRecord>();
+            var sources = new[]
+            {
+                new { Path = settings.MyJournalPath, Author = settings.MyAuthorName, Index = 0, Label = "내 일지" },
+                new { Path = settings.PartnerJournalPath, Author = settings.PartnerAuthorName, Index = 1, Label = "협업자 일지" },
+            };
+            foreach (var src in sources)
+            {
+                if (string.IsNullOrWhiteSpace(src.Path))
+                {
+                    warnings.Add($"{src.Label} 경로가 비어 있어 건너뜁니다.");
+                    continue;
+                }
+                var parsed = ParseWithRetry(src.Path, sheet, src.Author, src.Index, src.Label, warnings);
+                if (parsed != null)
+                {
+                    allRecords.AddRange(parsed.Records);
+                    foreach (var w in parsed.Warnings) warnings.Add($"{src.Label}: {w}");
+                    Logger.Info($"{src.Label} 파싱 완료: {parsed.Records.Count}건 (시트 {parsed.SheetName})");
+                }
+            }
+            return allRecords;
         }
 
         private static ParseResult ParseWithRetry(string path, string sheet, string author, int index,

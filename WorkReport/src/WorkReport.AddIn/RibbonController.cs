@@ -51,7 +51,7 @@ namespace WorkReport.AddIn
             try
             {
                 var result = RefreshService.Run(saveActiveWorkbook: true);
-                new ResultWindow(result).ShowDialog();
+                WindowHelper.ShowOverExcel(new ResultWindow(result));
             }
             catch (RefreshBlockedException ex)
             {
@@ -96,16 +96,37 @@ namespace WorkReport.AddIn
 
         public void OnManageProjects(IRibbonControl control)
         {
-            // 5단계(WPF 프로젝트 관리 창)에서 구현 예정
-            MessageBox.Show("프로젝트 관리 창은 다음 단계에서 제공됩니다.\n그때까지는 projects.json을 직접 편집하세요.",
-                "워크리포트", MessageBoxButton.OK, MessageBoxImage.Information);
+            try
+            {
+                var settings = LocalSettings.Load();
+                if (string.IsNullOrWhiteSpace(settings.SharedConfigDir))
+                {
+                    MessageBox.Show("공유설정 폴더가 지정되지 않아 프로젝트 목록을 열 수 없습니다.\n먼저 [설정]에서 폴더를 지정하세요.",
+                        "워크리포트", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return;
+                }
+                WindowHelper.ShowOverExcel(new ProjectsWindow(settings));
+            }
+            catch (Exception ex)
+            {
+                Logger.Error("프로젝트 관리 창 오류", ex);
+                MessageBox.Show("프로젝트 관리 창을 열지 못했습니다: " + ex.Message,
+                    "워크리포트", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
         }
 
         public void OnSettings(IRibbonControl control)
         {
-            // 5단계(WPF 설정 창)에서 구현 예정
-            MessageBox.Show("설정 창은 다음 단계에서 제공됩니다.\n그때까지는 " + LocalSettings.DefaultPath + " 을 직접 편집하세요.",
-                "워크리포트", MessageBoxButton.OK, MessageBoxImage.Information);
+            try
+            {
+                WindowHelper.ShowOverExcel(new SettingsWindow());
+            }
+            catch (Exception ex)
+            {
+                Logger.Error("설정 창 오류", ex);
+                MessageBox.Show("설정 창을 열지 못했습니다: " + ex.Message,
+                    "워크리포트", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
         }
 
         public void OnOpenLog(IRibbonControl control)

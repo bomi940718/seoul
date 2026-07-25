@@ -1,0 +1,371 @@
+using System;
+using System.Collections.Generic;
+using System.Collections.ObjectModel;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Data;
+using System.Windows.Media;
+using WorkReport.AddIn.Services;
+using WorkReport.Core.Config;
+using WorkReport.Core.Models;
+using WorkReport.Core.Parsing;
+using WorkReport.Core.Reporting;
+
+namespace WorkReport.AddIn.UI
+{
+    /// <summary>프로젝트 관리 창 — projects.json 편집 + 미등록 키 감지.</summary>
+    public class ProjectsWindow : Window
+    {
+        private readonly LocalSettings _settings;
+        private ProjectRegistry _registry;
+
+        private readonly ObservableCollection<ProjectInfo> _items = new ObservableCollection<ProjectInfo>();
+        private readonly ObservableCollection<UnregisteredKey> _unregistered = new ObservableCollection<UnregisteredKey>();
+
+        private readonly DataGrid _grid = new DataGrid();
+        private readonly ListView _unregisteredList = new ListView();
+        private readonly TextBlock _scanStatus = new TextBlock { Foreground = Brushes.Gray, FontSize = 11 };
+        private readonly Button _scanButton = new Button { Content = "일지에서 미등록 키 검색", Padding = new Thickness(10, 4, 10, 4) };
+
+        public ProjectsWindow(LocalSettings settings)
+        {
+            _settings = settings;
+
+            Title = "워크리포트 — 프로젝트 관리";
+            Width = 1040;
+            Height = 620;
+            MinWidth = 760;
+            MinHeight = 460;
+            WindowStartupLocation = WindowStartupLocation.CenterOwner;
+            FontSize = 13;
+
+            LoadRegistry();
+
+            var root = new Grid { Margin = new Thickness(14) };
+            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+
+            root.Children.Add(Row(0, new TextBlock
+            {
+                Text = "등록 파일: " + (_registry.LoadedFrom ?? "(경로 없음)"),
+                Foreground = Brushes.Gray,
+                Margin = new Thickness(0, 0, 0, 8),
+                TextWrapping = TextWrapping.Wrap,
+            }));
+
+            // 본문: 왼쪽 그리드 / 오른쪽 미등록 키
+            var body = new Grid();
+            body.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(2.6, GridUnitType.Star) });
+            body.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(8) });
+            body.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star), MinWidth = 240 });
+            body.Children.Add(Column(0, BuildGridPanel()));
+            body.Children.Add(Column(2, BuildUnregisteredPanel()));
+            root.Children.Add(Row(1, body));
+
+            root.Children.Add(Row(2, BuildButtonBar()));
+
+            Content = root;
+            Loaded += (s, e) => StartScan();
+        }
+
+        private static UIElement Row(int row, UIElement child) { Grid.SetRow(child, row); return child; }
+        private static UIElement Column(int col, UIElement child) { Grid.SetColumn(child, col); return child; }
+
+        private void LoadRegistry()
+        {
+            _registry = ProjectRegistry.Load(_settings.SharedConfigDir);
+            _items.Clear();
+            foreach (var p in _registry.Projects) _items.Add(p);
+        }
+
+        private UIElement BuildGridPanel()
+        {
+            var panel = new Grid();
+            panel.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+            panel.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+
+            _grid.ItemsSource = _items;
+            _grid.AutoGenerateColumns = false;
+            _grid.CanUserAddRows = false;      // 기본값 지정을 위해 [추가] 버튼으로만 행을 만든다
+            _grid.CanUserDeleteRows = false;
+            _grid.HeadersVisibility = DataGridHeadersVisibility.Column;
+            _grid.GridLinesVisibility = DataGridGridLinesVisibility.All;
+            _grid.SelectionMode = DataGridSelectionMode.Extended;
+            // 고정 너비 합계가 패널 폭에 맞게 잡혀 있다. 창을 줄이면 star 대신 가로 스크롤로 처리한다.
+            _grid.HorizontalScrollBarVisibility = ScrollBarVisibility.Auto;
+            _grid.Columns.Add(TextColumn("넘버 (일지 I열 매칭 키)", nameof(ProjectInfo.Number), 170));
+            _grid.Columns.Add(TextColumn("이름", nameof(ProjectInfo.Name), 160));
+            _grid.Columns.Add(TextColumn("그룹", nameof(ProjectInfo.Group), 100));
+            _grid.Columns.Add(StatusColumn());
+            _grid.Columns.Add(new DataGridCheckBoxColumn
+            {
+                Header = "활성",
+                Width = 46,
+                Binding = new Binding(nameof(ProjectInfo.Active)) { UpdateSourceTrigger = UpdateSourceTrigger.PropertyChanged },
+            });
+            // 마지막 열은 남는 폭을 채워 가로 스크롤이 생기지 않게 한다
+            var outCol = TextColumn("개별 출력 폴더", nameof(ProjectInfo.OutputDir), 155);
+            outCol.Width = new DataGridLength(1, DataGridLengthUnitType.Star);
+            outCol.MinWidth = 120;
+            _grid.Columns.Add(outCol);
+            panel.Children.Add(Row(0, _grid));
+
+            var bar = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 8, 0, 0) };
+            var add = new Button { Content = "＋ 추가", Padding = new Thickness(12, 4, 12, 4), Margin = new Thickness(0, 0, 6, 0) };
+            add.Click += (s, e) => AddProject(new ProjectInfo
+            {
+                Number = "",
+                Name = "",
+                Group = "ETC",
+                Status = ProjectInfo.StatusActive,
+                Active = true,
+            });
+            var del = new Button { Content = "－ 삭제", Padding = new Thickness(12, 4, 12, 4) };
+            del.Click += OnDelete;
+            bar.Children.Add(add);
+            bar.Children.Add(del);
+            bar.Children.Add(new TextBlock
+            {
+                Text = "  그룹은 대시보드 탭 이름입니다 (영어 대문자 권장). 완료 상태는 대시보드에서 기본 숨김.",
+                Foreground = Brushes.Gray,
+                FontSize = 11,
+                VerticalAlignment = VerticalAlignment.Center,
+            });
+            panel.Children.Add(Row(1, bar));
+
+            return panel;
+        }
+
+        private static DataGridTextColumn TextColumn(string header, string property, double width) => new DataGridTextColumn
+        {
+            Header = header,
+            Width = width,
+            Binding = new Binding(property) { UpdateSourceTrigger = UpdateSourceTrigger.PropertyChanged },
+        };
+
+        private static DataGridComboBoxColumn StatusColumn()
+        {
+            var col = new DataGridComboBoxColumn
+            {
+                Header = "상태",
+                Width = 72,
+                SelectedItemBinding = new Binding(nameof(ProjectInfo.Status)) { UpdateSourceTrigger = UpdateSourceTrigger.PropertyChanged },
+            };
+            col.ItemsSource = new[] { ProjectInfo.StatusPlanned, ProjectInfo.StatusActive, ProjectInfo.StatusDone };
+            return col;
+        }
+
+        private UIElement BuildUnregisteredPanel()
+        {
+            var panel = new Grid();
+            panel.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            panel.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+            panel.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+
+            panel.Children.Add(Row(0, new TextBlock
+            {
+                Text = "미등록 키 (일지에는 있으나 미등록)",
+                FontWeight = FontWeights.Bold,
+                Margin = new Thickness(0, 0, 0, 6),
+            }));
+
+            _unregisteredList.ItemsSource = _unregistered;
+            var gv = new GridView();
+            gv.Columns.Add(new GridViewColumn { Header = "넘버", Width = 118, DisplayMemberBinding = new Binding(nameof(UnregisteredKey.Number)) });
+            gv.Columns.Add(new GridViewColumn { Header = "건수", Width = 42, DisplayMemberBinding = new Binding(nameof(UnregisteredKey.Count)) });
+            gv.Columns.Add(new GridViewColumn { Header = "예시 이름", Width = 100, DisplayMemberBinding = new Binding(nameof(UnregisteredKey.SampleProjectName)) });
+            _unregisteredList.View = gv;
+            _unregisteredList.MouseDoubleClick += (s, e) => RegisterSelectedKey();
+            panel.Children.Add(Row(1, _unregisteredList));
+
+            var bottom = new StackPanel { Margin = new Thickness(0, 6, 0, 0) };
+            var register = new Button { Content = "선택 항목 등록하기 →", Padding = new Thickness(10, 4, 10, 4) };
+            register.Click += (s, e) => RegisterSelectedKey();
+            bottom.Children.Add(register);
+            _scanButton.Margin = new Thickness(0, 6, 0, 0);
+            _scanButton.Click += (s, e) => StartScan();
+            bottom.Children.Add(_scanButton);
+            _scanStatus.Margin = new Thickness(0, 6, 0, 0);
+            _scanStatus.TextWrapping = TextWrapping.Wrap;
+            bottom.Children.Add(_scanStatus);
+            panel.Children.Add(Row(2, bottom));
+
+            return panel;
+        }
+
+        private UIElement BuildButtonBar()
+        {
+            var bar = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                HorizontalAlignment = HorizontalAlignment.Right,
+                Margin = new Thickness(0, 12, 0, 0),
+            };
+            var save = new Button { Content = "저장", Padding = new Thickness(20, 6, 20, 6), IsDefault = true, Margin = new Thickness(0, 0, 8, 0) };
+            save.Click += OnSave;
+            var cancel = new Button { Content = "취소", Padding = new Thickness(20, 6, 20, 6), IsCancel = true };
+            bar.Children.Add(save);
+            bar.Children.Add(cancel);
+            return bar;
+        }
+
+        private void AddProject(ProjectInfo p)
+        {
+            _items.Add(p);
+            _grid.SelectedItem = p;
+            _grid.ScrollIntoView(p);
+            _grid.Focus();
+        }
+
+        private void OnDelete(object sender, RoutedEventArgs e)
+        {
+            var selected = _grid.SelectedItems.Cast<ProjectInfo>().ToList();
+            if (selected.Count == 0)
+            {
+                MessageBox.Show("삭제할 행을 선택하세요.", "워크리포트", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+            string names = string.Join(", ", selected.Take(5).Select(p => string.IsNullOrWhiteSpace(p.Number) ? "(넘버 없음)" : p.Number));
+            if (selected.Count > 5) names += $" 외 {selected.Count - 5}건";
+            var answer = MessageBox.Show(
+                $"{selected.Count}건을 목록에서 삭제할까요?\n\n{names}\n\n" +
+                "※ 일지 데이터는 그대로이며, 저장해야 실제로 반영됩니다.\n" +
+                "   기록을 남겨두려면 삭제 대신 [활성] 체크를 해제하세요.",
+                "워크리포트 — 프로젝트 삭제", MessageBoxButton.YesNo, MessageBoxImage.Question);
+            if (answer != MessageBoxResult.Yes) return;
+            foreach (var p in selected) _items.Remove(p);
+        }
+
+        private void RegisterSelectedKey()
+        {
+            var key = _unregisteredList.SelectedItem as UnregisteredKey;
+            if (key == null)
+            {
+                MessageBox.Show("등록할 미등록 키를 선택하세요.", "워크리포트", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+            AddProject(new ProjectInfo
+            {
+                Number = key.Number,
+                Name = key.SampleProjectName ?? "",
+                Group = "ETC",
+                Status = ProjectInfo.StatusActive,
+                Active = true,
+            });
+            _unregistered.Remove(key);
+        }
+
+        /// <summary>일지를 백그라운드에서 파싱해 미등록 키 목록을 채운다 (수 초 소요).</summary>
+        private void StartScan()
+        {
+            _scanButton.IsEnabled = false;
+            _unregistered.Clear();
+            _scanStatus.Text = "일지를 읽는 중…";
+            _scanStatus.Foreground = Brushes.Gray;
+
+            var registered = _items.Select(p => p.Number).ToList();
+            var settings = _settings;
+
+            Task.Run(() =>
+            {
+                var warnings = new List<string>();
+                var records = RefreshService.ParseJournals(settings, warnings);
+                var keys = ReportBuilder.FindUnregisteredKeys(
+                    records, registered.Select(n => new ProjectInfo { Number = n }));
+                return new { Keys = keys, Warnings = warnings, Total = records.Count };
+            })
+            .ContinueWith(t =>
+            {
+                _scanButton.IsEnabled = true;
+                if (t.IsFaulted)
+                {
+                    var ex = t.Exception?.GetBaseException();
+                    Logger.Error("미등록 키 검색 실패", ex);
+                    _scanStatus.Text = "검색 실패: " + (ex?.Message ?? "알 수 없는 오류");
+                    _scanStatus.Foreground = Brushes.Firebrick;
+                    return;
+                }
+                foreach (var k in t.Result.Keys) _unregistered.Add(k);
+                _scanStatus.Text = t.Result.Keys.Count == 0
+                    ? $"레코드 {t.Result.Total}건 — 미등록 키 없음"
+                    : $"레코드 {t.Result.Total}건 — 미등록 {t.Result.Keys.Count}종";
+                if (t.Result.Warnings.Count > 0)
+                {
+                    _scanStatus.Text += "\n⚠ " + string.Join("\n⚠ ", t.Result.Warnings);
+                    _scanStatus.Foreground = Brushes.DarkOrange;
+                }
+            }, TaskScheduler.FromCurrentSynchronizationContext());
+        }
+
+        private void OnSave(object sender, RoutedEventArgs e)
+        {
+            _grid.CommitEdit(DataGridEditingUnit.Row, true);
+
+            var cleaned = new List<ProjectInfo>();
+            var seen = new Dictionary<string, string>();
+            foreach (var p in _items)
+            {
+                string number = (p.Number ?? "").Trim();
+                if (number.Length == 0)
+                {
+                    MessageBox.Show("넘버가 비어 있는 행이 있습니다. 넘버는 일지 I열과 맞추는 필수 항목입니다.",
+                        "워크리포트", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return;
+                }
+                string key = KeyNormalizer.Normalize(number);
+                if (seen.ContainsKey(key))
+                {
+                    MessageBox.Show($"넘버가 중복됩니다: \"{number}\" 와 \"{seen[key]}\"\n" +
+                                    "(대소문자·공백·줄바꿈 차이는 같은 키로 취급됩니다.)",
+                        "워크리포트", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return;
+                }
+                seen[key] = number;
+
+                p.Number = number;
+                p.Name = (p.Name ?? "").Trim();
+                p.Group = string.IsNullOrWhiteSpace(p.Group) ? "ETC" : p.Group.Trim();
+                p.Status = p.EffectiveStatus;
+                p.OutputDir = string.IsNullOrWhiteSpace(p.OutputDir) ? null : p.OutputDir.Trim();
+                cleaned.Add(p);
+            }
+
+            // 락 없는 공유 파일이므로, 로드 이후 상대가 수정했으면 덮어쓰기 전에 경고한다
+            if (_registry.HasExternalChange())
+            {
+                var answer = MessageBox.Show(
+                    "이 창을 연 뒤 다른 사용자가 projects.json을 수정했습니다.\n\n" +
+                    "[예] 내 편집 내용으로 덮어씁니다 (상대 변경분은 사라집니다)\n" +
+                    "[아니오] 저장하지 않고 상대 변경분을 다시 불러옵니다 (내 편집 내용은 사라집니다)",
+                    "워크리포트 — 변경 충돌", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+                if (answer != MessageBoxResult.Yes)
+                {
+                    LoadRegistry();
+                    StartScan();
+                    Logger.Warn("projects.json 외부 변경 감지 → 재로드 (내 편집 취소)");
+                    return;
+                }
+                Logger.Warn("projects.json 외부 변경 감지 → 사용자 선택으로 덮어쓰기");
+            }
+
+            try
+            {
+                _registry.Projects = cleaned;
+                _registry.Save();
+                Logger.Info($"projects.json 저장: {cleaned.Count}건 (활성 {cleaned.Count(p => p.Active)}건)");
+                DialogResult = true;
+                Close();
+            }
+            catch (Exception ex)
+            {
+                Logger.Error("projects.json 저장 실패", ex);
+                MessageBox.Show("프로젝트 목록을 저장하지 못했습니다: " + ex.Message,
+                    "워크리포트", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+    }
+}
