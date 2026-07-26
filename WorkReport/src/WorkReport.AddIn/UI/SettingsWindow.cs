@@ -152,8 +152,17 @@ namespace WorkReport.AddIn.UI
             };
             browse.Click += (s, e) =>
             {
-                string picked = isFile ? PickFile(box.Text) : PickFolder(box.Text);
-                if (picked != null) box.Text = picked;
+                try
+                {
+                    string picked = isFile ? PickFile(box.Text) : PickFolder(box.Text);
+                    if (picked != null) box.Text = picked;
+                }
+                catch (Exception ex)
+                {
+                    Logger.Error("경로 선택 실패", ex);
+                    MessageBox.Show("경로 선택 창을 열지 못했습니다: " + ex.Message,
+                        "워크리포트", MessageBoxButton.OK, MessageBoxImage.Error);
+                }
             };
             Grid.SetColumn(browse, 1);
             inner.Children.Add(browse);

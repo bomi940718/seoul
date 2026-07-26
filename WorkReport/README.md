@@ -12,7 +12,7 @@
 | 경로 | 내용 | 대상 |
 |---|---|---|
 | `src/WorkReport.Core` | 파서(ClosedXML)·병합·HTML 렌더러·설정 | netstandard2.0 |
-| `src/WorkReport.AddIn` | Excel-DNA 리본 + WPF 창 (예정) | net48 |
+| `src/WorkReport.AddIn` | Excel-DNA 리본 + WPF 창(프로젝트 관리·설정·결과) | net48 |
 | `tests/WorkReport.Core.Tests` | 단위 테스트 (xunit) | net8.0 |
 | `tools/ParseCheck` | 샘플 xlsx 파싱 검증·HTML 시안 생성 콘솔 | net8.0 |
 
@@ -26,9 +26,18 @@ dotnet test
 dotnet run --project tools/ParseCheck -- <일지.xlsx> <시트명> --author 이름 --html <출력폴더>
 ```
 
-## 배포 빌드 (Windows, 예정)
+## 배포 빌드 (Windows)
 
-`WorkReport-AddIn64.xll` 단일 파일 (ExcelDnaPack 패킹) — 애드인 프로젝트 추가 시 절차 문서화 예정.
-설치: xll을 `C:\Tools`에 복사 → 파일 속성에서 차단 해제(Mark of the Web) → Excel 추가기능 등록.
+```
+dotnet build src\WorkReport.AddIn\WorkReport.AddIn.csproj -c Release
+```
 
-상세 스펙 확정 사항은 [docs/DEV-NOTES.md](docs/DEV-NOTES.md) 참조.
+`bin\Release\net48\publish\` 에 의존성이 전부 내장된 단일 xll 두 개가 생성된다
+(`WorkReport-AddIn.xll` = 32비트, `WorkReport-AddIn64.xll` = 64비트). 이를 `dist\` 로 복사한다.
+
+- 바인딩 리다이렉트(.xll.config)는 xll 내부에 CONFIG 리소스로 내장되므로 함께 배포할 필요가 없다
+- 패킹 대상 어셈블리는 `src\WorkReport.AddIn\WorkReport-AddIn.dna` 에 명시 —
+  **NuGet 의존성을 바꾸면 이 파일도 갱신할 것**
+- Excel에 애드인이 로드된 상태면 xll이 잠겨 패킹이 실패한다 (Excel 종료 후 빌드)
+
+설치·사용 안내는 [시작하기.md](시작하기.md), 스펙 확정 사항은 [docs/DEV-NOTES.md](docs/DEV-NOTES.md) 참조.

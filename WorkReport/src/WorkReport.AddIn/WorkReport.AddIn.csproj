@@ -10,6 +10,10 @@
     <!-- Excel-DNA: 32/64비트 xll 모두 생성 (실측: 사용자 PC Excel은 x86 — 설치 시 비트 맞는 쪽 사용).
          리본(ComServer)·패킹 참조는 WorkReport-AddIn.dna 템플릿에서 정의 -->
     <ExcelAddInFileName>WorkReport-AddIn</ExcelAddInFileName>
+    <!-- 패킹 산출물 이름을 지시서대로 지정 (기본값은 "-packed" 접미사가 붙는다).
+         빈 ExcelDnaPackXllSuffix는 MSBuild가 '미설정'으로 보고 기본값을 되살리므로 이름을 직접 준다. -->
+    <ExcelDnaPack32BitXllName>WorkReport-AddIn</ExcelDnaPack32BitXllName>
+    <ExcelDnaPack64BitXllName>WorkReport-AddIn64</ExcelDnaPack64BitXllName>
     <!-- ClosedXML 계열의 System.Memory 등 버전 불일치 해소용 .xll.config 생성 -->
     <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
     <GenerateBindingRedirectsOutputType>true</GenerateBindingRedirectsOutputType>
