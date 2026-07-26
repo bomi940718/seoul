@@ -72,6 +72,16 @@ namespace WorkReport.AddIn.UI
                     Foreground = Brushes.DarkOrange,
                 });
             }
+            if (result.RemovedFiles.Count > 0)
+            {
+                notices.Children.Add(new TextBlock
+                {
+                    Text = "정리된 옛 파일: " + string.Join(", ", result.RemovedFiles.Distinct()),
+                    TextWrapping = TextWrapping.Wrap,
+                    Foreground = Brushes.Gray,
+                    Margin = new Thickness(0, 2, 0, 0),
+                });
+            }
             foreach (var w in result.Warnings)
             {
                 notices.Children.Add(new TextBlock

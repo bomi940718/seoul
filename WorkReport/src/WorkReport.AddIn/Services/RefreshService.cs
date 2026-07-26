@@ -27,6 +27,9 @@ namespace WorkReport.AddIn.Services
         public List<ProjectSummary> Projects { get; } = new List<ProjectSummary>();
         public List<string> Warnings { get; } = new List<string>();
         public List<UnregisteredKey> UnregisteredKeys { get; set; } = new List<UnregisteredKey>();
+
+        /// <summary>프로젝트 이름 변경 등으로 더 이상 쓰이지 않아 정리된 옛 HTML 파일명.</summary>
+        public List<string> RemovedFiles { get; } = new List<string>();
         public string LocalOutputDir { get; set; }
         /// <summary>대시보드가 실제로 있는 폴더 (NAS 성공 시 NAS, 실패 시 로컬).</summary>
         public string FinalOutputDir { get; set; }
@@ -146,6 +149,12 @@ namespace WorkReport.AddIn.Services
                 }
             }
 
+            // 폴더별로 "이번에 넣은 파일" 목록을 모아 두었다가, 마지막에 옛 파일을 정리한다
+            var writtenNames = written.Select(Path.GetFileName).ToList();
+            var filesByDir = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
+            AddFiles(filesByDir, LocalStagingDir, writtenNames);
+            if (result.NasCopyOk) AddFiles(filesByDir, settings.OutputRootDir, writtenNames);
+
             // 프로젝트별 개별 출력 폴더(선택): 공통 루트와 별개로 추가 복사
             foreach (var d in reportData)
             {
@@ -155,6 +164,7 @@ namespace WorkReport.AddIn.Services
                     Directory.CreateDirectory(d.Project.OutputDir);
                     File.Copy(Path.Combine(LocalStagingDir, d.FileName),
                         Path.Combine(d.Project.OutputDir, d.FileName), true);
+                    AddFiles(filesByDir, d.Project.OutputDir, new[] { d.FileName });
                     Logger.Info($"개별 출력 복사: {d.Project.Number} → {d.Project.OutputDir}");
                 }
                 catch (Exception ex)
@@ -164,8 +174,39 @@ namespace WorkReport.AddIn.Services
                 }
             }
 
-            Logger.Info($"===== 리포트 갱신 완료: 프로젝트 {result.Projects.Count}건, 경고 {result.Warnings.Count}건 =====");
+            // 프로젝트 이름/넘버가 바뀌면 옛 이름의 HTML이 남으므로, 우리가 만든 것만 골라 지운다
+            foreach (var pair in filesByDir)
+            {
+                try
+                {
+                    var removed = OutputManifest.Prune(pair.Key, pair.Value, result.Warnings);
+                    if (removed.Count == 0) continue;
+                    result.RemovedFiles.AddRange(removed);
+                    Logger.Info($"옛 파일 정리: {pair.Key} → {string.Join(", ", removed)}");
+                }
+                catch (Exception ex)
+                {
+                    // 정리는 부가 기능이므로 실패해도 갱신 자체를 막지 않는다
+                    Logger.Error($"옛 파일 정리 실패: {pair.Key}", ex);
+                    result.Warnings.Add($"옛 파일 정리 중 문제가 있었습니다({pair.Key}): {ex.Message}");
+                }
+            }
+
+            Logger.Info($"===== 리포트 갱신 완료: 프로젝트 {result.Projects.Count}건, " +
+                        $"정리 {result.RemovedFiles.Count}건, 경고 {result.Warnings.Count}건 =====");
             return result;
+        }
+
+        private static void AddFiles(Dictionary<string, HashSet<string>> map, string dir, IEnumerable<string> names)
+        {
+            if (string.IsNullOrWhiteSpace(dir)) return;
+            HashSet<string> set;
+            if (!map.TryGetValue(dir, out set))
+            {
+                set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                map[dir] = set;
+            }
+            foreach (string n in names) set.Add(n);
         }
 
         /// <summary>
