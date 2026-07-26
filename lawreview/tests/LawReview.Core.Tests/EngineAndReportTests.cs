@@ -147,6 +147,90 @@ public class JudgmentParsingTests
     [Fact]
     public void 해석_불가능한_응답은_확인필요로_처리한다() =>
         Assert.Equal(Applicability.확인필요, ClaudeJudgmentProvider.ParseJudgment("자유 텍스트 답변").Applicability);
+
+    [Fact]
+    public void 잘린_응답에서도_판정을_살린다()
+    {
+        // 실제로 발생한 사례: max_tokens 초과로 사유가 문장 중간에서 끊겨 JSON이 미완성.
+        // 예전에는 판정("해당없음")까지 버리고 확인필요로 떨어뜨렸다.
+        const string truncated =
+            "{\"판정\":\"해당없음\",\"사유\":\"본 건축물은 공장 용도이나 연면적 2,484.43㎡가 시행령 제56조제1항제3호의 기준을 초과하더라도, ";
+
+        var j = ClaudeJudgmentProvider.ParseJudgment(truncated);
+
+        Assert.Equal(Applicability.해당없음, j.Applicability);
+        Assert.Contains("제56조제1항제3호", j.Reason);
+        Assert.Contains("잘려", j.Reason);            // 잘렸다는 사실을 검토자에게 알려야 한다
+        Assert.DoesNotContain("해석 실패", j.Reason);
+    }
+
+    [Fact]
+    public void 잘린_응답의_사유에서_이스케이프를_되돌린다()
+    {
+        var j = ClaudeJudgmentProvider.ParseJudgment(
+            "{\"판정\":\"적용\",\"사유\":\"제1항 \\\"공장\\\"에 해당하며,\\n연면적 기준을 초과한다");
+        Assert.Equal(Applicability.적용, j.Applicability);
+        Assert.Contains("\"공장\"", j.Reason);
+        Assert.Contains("\n", j.Reason);
+    }
+
+    [Fact]
+    public void 첫_블록이_텍스트가_아니어도_텍스트_블록을_찾는다()
+    {
+        // content[0]을 그대로 읽던 예전 코드는 여기서 KeyNotFoundException을 던져 검토 전체를 중단시켰다.
+        using var doc = System.Text.Json.JsonDocument.Parse(
+            """{"content":[{"type":"thinking","thinking":"..."},{"type":"text","text":"{\"판정\":\"적용\",\"사유\":\"근거\"}"}]}""");
+        var text = ClaudeJudgmentProvider.ExtractText(doc.RootElement);
+        Assert.NotNull(text);
+        Assert.Equal(Applicability.적용, ClaudeJudgmentProvider.ParseJudgment(text!).Applicability);
+    }
+
+    [Fact]
+    public void 텍스트_블록이_없으면_null을_돌려준다()
+    {
+        using var noText = System.Text.Json.JsonDocument.Parse("""{"content":[{"type":"thinking","thinking":"..."}]}""");
+        Assert.Null(ClaudeJudgmentProvider.ExtractText(noText.RootElement));
+        using var noContent = System.Text.Json.JsonDocument.Parse("""{"stop_reason":"max_tokens"}""");
+        Assert.Null(ClaudeJudgmentProvider.ExtractText(noContent.RootElement));
+    }
+
+    [Fact]
+    public void 완전한_응답에는_잘림_안내를_붙이지_않는다()
+    {
+        var j = ClaudeJudgmentProvider.ParseJudgment("{\"판정\":\"적용\",\"사유\":\"연면적 기준 초과.\"}");
+        Assert.Equal(Applicability.적용, j.Applicability);
+        Assert.Equal("연면적 기준 초과.", j.Reason);
+    }
+}
+
+public class EngineResilienceTests
+{
+    /// <summary>판정 한 건이 예외로 실패해도 나머지 항목의 검토 결과를 잃지 않아야 한다.</summary>
+    [Fact]
+    public async Task 판정_실패_항목이_있어도_검토를_끝까지_진행한다()
+    {
+        var engine = new ReviewEngine(
+            new LawReview.Core.LawApi.MolegClient(new HttpClient(), "test"), new ThrowingJudge());
+        var project = new ProjectInput { SiteArea = 100, PlannedBuildingArea = 10 };
+        var checklist = new[]
+        {
+            new ChecklistItem { Id = "a", Title = "첫 항목", Judgment = JudgmentType.Manual, Note = "수동" },
+            new ChecklistItem { Id = "b", Title = "판정 실패 항목", Judgment = JudgmentType.Ai },
+            new ChecklistItem { Id = "c", Title = "마지막 항목", Judgment = JudgmentType.Manual, Note = "수동" },
+        };
+
+        var result = await engine.RunAsync(project, checklist);
+
+        Assert.Equal(3, result.Rows.Count);                       // 중간에 끊기지 않는다
+        Assert.Equal("마지막 항목", result.Rows[^1].Item.Title);
+    }
+
+    private sealed class ThrowingJudge : IJudgmentProvider
+    {
+        public Task<Judgment> JudgeAsync(ChecklistItem item, IReadOnlyList<CitedArticle> articles,
+            ProjectInput project, CancellationToken ct = default) =>
+            throw new KeyNotFoundException("The given key was not present in the dictionary.");
+    }
 }
 
 public class DocxReportTests

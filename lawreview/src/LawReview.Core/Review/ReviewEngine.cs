@@ -97,9 +97,19 @@ public sealed class ReviewEngine
                     }
                     else
                     {
-                        var judgment = await _judge.JudgeAsync(item, valid, project, ct);
-                        row.Applicability = judgment.Applicability;
-                        row.Reason = judgment.Reason;
+                        // 판정 한 건이 실패해도 나머지 50여 항목의 검토를 잃지 않도록 항목 단위로 격리한다.
+                        try
+                        {
+                            var judgment = await _judge.JudgeAsync(item, valid, project, ct);
+                            row.Applicability = judgment.Applicability;
+                            row.Reason = judgment.Reason;
+                        }
+                        catch (Exception ex) when (ex is not OperationCanceledException)
+                        {
+                            Report($"판정 실패: {item.Title} — {ex.Message}");
+                            row.Applicability = Applicability.확인필요;
+                            row.Reason = $"AI 판정 중 오류가 발생했습니다 ({ex.Message}). 인용된 조문 원문을 직접 확인하세요.";
+                        }
                     }
                     break;
 

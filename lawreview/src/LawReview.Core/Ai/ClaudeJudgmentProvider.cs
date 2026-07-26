@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using LawReview.Core.Models;
 using LawReview.Core.Review;
 
@@ -28,7 +29,9 @@ public sealed class ClaudeJudgmentProvider : IJudgmentProvider
         var body = JsonSerializer.Serialize(new
         {
             model = _model,
-            max_tokens = 1024,
+            // 사유가 길어져 응답이 잘리면 판정을 통째로 잃는다(실제로 "건축물의 내화구조"에서 발생).
+            // 여유를 두고, 그래도 잘린 경우는 ParsePartial이 판정을 살린다.
+            max_tokens = 2048,
             system = SystemPrompt,
             messages = new[] { new { role = "user", content = userPrompt } },
         });
@@ -44,8 +47,30 @@ public sealed class ClaudeJudgmentProvider : IJudgmentProvider
             throw new InvalidOperationException($"Claude API 오류 ({(int)resp.StatusCode}): {respText}");
 
         using var doc = JsonDocument.Parse(respText);
-        var text = doc.RootElement.GetProperty("content")[0].GetProperty("text").GetString() ?? "";
+        var text = ExtractText(doc.RootElement);
+        if (text is null)
+        {
+            // content[0]이 text 블록이 아닐 수 있다(사고 블록 등). 예전에는 여기서 예외가 나
+            // 검토 전체가 중단됐다 — 이제는 해당 항목만 확인필요로 두고 계속 진행한다.
+            var stop = doc.RootElement.TryGetProperty("stop_reason", out var s) ? s.GetString() : null;
+            return new Judgment(Applicability.확인필요,
+                $"판정 응답에서 텍스트를 찾지 못했습니다 (stop_reason: {stop ?? "?"}). 조문 원문을 직접 확인하세요.");
+        }
         return ParseJudgment(text);
+    }
+
+    /// <summary>응답의 content 블록 중 첫 번째 text 블록을 꺼낸다. 없으면 null.</summary>
+    internal static string? ExtractText(JsonElement root)
+    {
+        if (!root.TryGetProperty("content", out var content) || content.ValueKind != JsonValueKind.Array)
+            return null;
+        foreach (var block in content.EnumerateArray())
+        {
+            if (block.ValueKind != JsonValueKind.Object) continue;
+            if (block.TryGetProperty("text", out var t) && t.ValueKind == JsonValueKind.String)
+                return t.GetString();
+        }
+        return null;
     }
 
     private const string SystemPrompt =
@@ -90,16 +115,56 @@ public sealed class ClaudeJudgmentProvider : IJudgmentProvider
                 using var doc = JsonDocument.Parse(text[start..(end + 1)]);
                 var verdict = doc.RootElement.TryGetProperty("판정", out var v) ? v.GetString() : null;
                 var reason = doc.RootElement.TryGetProperty("사유", out var r) ? r.GetString() : null;
-                var applicability = verdict switch
-                {
-                    "적용" => Applicability.적용,
-                    "해당없음" => Applicability.해당없음,
-                    _ => Applicability.확인필요,
-                };
-                return new Judgment(applicability, reason ?? "");
+                return new Judgment(ToApplicability(verdict), reason ?? "");
             }
-            catch (JsonException) { /* 아래 fallback */ }
+            catch (JsonException) { /* 아래 부분 파싱으로 복구 */ }
         }
-        return new Judgment(Applicability.확인필요, $"판정 응답 해석 실패: {text}");
+        return ParsePartial(text);
     }
+
+    private static readonly Regex VerdictPattern =
+        new("\"판정\"\\s*:\\s*\"(적용|해당없음|확인필요)\"", RegexOptions.Compiled);
+    private static readonly Regex ReasonPattern =
+        new("\"사유\"\\s*:\\s*\"(.*)", RegexOptions.Compiled | RegexOptions.Singleline);
+
+    /// <summary>
+    /// JSON이 미완성인 응답(max_tokens 초과로 문장 중간에 잘린 경우 등)에서 판정과 사유를 살린다.
+    /// 판정 자체는 응답 앞부분에 있으므로, 사유가 잘렸다고 판정까지 버리면 안 된다.
+    /// </summary>
+    internal static Judgment ParsePartial(string text)
+    {
+        var verdict = VerdictPattern.Match(text);
+        if (!verdict.Success)
+            return new Judgment(Applicability.확인필요, $"판정 응답 해석 실패: {text}");
+
+        var reason = "";
+        if (ReasonPattern.Match(text) is { Success: true } m)
+        {
+            // 닫는 따옴표까지만 취하고(잘렸으면 끝까지), JSON 이스케이프를 되돌린다.
+            var raw = m.Groups[1].Value;
+            var sb = new StringBuilder();
+            for (var i = 0; i < raw.Length; i++)
+            {
+                var c = raw[i];
+                if (c == '\\' && i + 1 < raw.Length)
+                {
+                    sb.Append(raw[++i] switch { 'n' => '\n', 't' => '\t', var other => other });
+                    continue;
+                }
+                if (c == '"') break;
+                sb.Append(c);
+            }
+            reason = sb.ToString().TrimEnd();
+            if (!text.TrimEnd().EndsWith('}'))
+                reason += " (응답이 잘려 사유가 일부만 기록되었습니다.)";
+        }
+        return new Judgment(ToApplicability(verdict.Groups[1].Value), reason);
+    }
+
+    private static Applicability ToApplicability(string? verdict) => verdict switch
+    {
+        "적용" => Applicability.적용,
+        "해당없음" => Applicability.해당없음,
+        _ => Applicability.확인필요,
+    };
 }
