@@ -16,6 +16,14 @@ namespace WorkReport.Core.Config
 
         public List<ProjectInfo> Projects { get; set; } = new List<ProjectInfo>();
 
+        /// <summary>
+        /// 그룹 이름 목록 (예: ARCHITECTURE, INTERIOR, EDUCATION).
+        /// 프로젝트에 그룹을 직접 지정하지 않았을 때, 일지의 H·I 열 값에서 이 이름을 찾아 자동 배정한다.
+        /// 순서는 우선순위 — 여러 그룹이 걸리면 앞에 있는 것이 이긴다.
+        /// </summary>
+        [JsonProperty("groups")]
+        public List<string> Groups { get; set; } = new List<string>();
+
         [JsonIgnore]
         public string LoadedFrom { get; private set; }
 
@@ -32,6 +40,7 @@ namespace WorkReport.Core.Config
             {
                 var loaded = JsonConvert.DeserializeObject<ProjectRegistry>(File.ReadAllText(path));
                 if (loaded?.Projects != null) reg.Projects = loaded.Projects;
+                if (loaded?.Groups != null) reg.Groups = loaded.Groups;
                 reg.LoadedTimestampUtc = File.GetLastWriteTimeUtc(path);
             }
             return reg;

@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using Newtonsoft.Json;
 
 namespace WorkReport.Core.Models
@@ -38,6 +39,25 @@ namespace WorkReport.Core.Models
             {
                 var s = (Status ?? "").Trim();
                 return s == StatusPlanned || s == StatusDone ? s : StatusActive;
+            }
+        }
+
+        /// <summary>
+        /// 같은 프로젝트로 취급할 추가 넘버(I열 값).
+        /// 일지에서 H·I 열을 바꿔 적은 기록을 한 프로젝트로 묶는 데 쓴다.
+        /// </summary>
+        [JsonProperty("aliases")]
+        public List<string> Aliases { get; set; } = new List<string>();
+
+        /// <summary>Number + Aliases (빈 값 제외).</summary>
+        [JsonIgnore]
+        public IEnumerable<string> AllNumbers
+        {
+            get
+            {
+                if (!string.IsNullOrWhiteSpace(Number)) yield return Number;
+                foreach (var a in Aliases ?? new List<string>())
+                    if (!string.IsNullOrWhiteSpace(a)) yield return a;
             }
         }
 

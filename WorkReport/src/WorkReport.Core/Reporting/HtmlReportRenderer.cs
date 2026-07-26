@@ -62,7 +62,7 @@ namespace WorkReport.Core.Reporting
                 {
                     number = p.Project.Number,
                     name = p.Project.Name,
-                    group = p.Project.EffectiveGroup,
+                    group = string.IsNullOrWhiteSpace(p.Group) ? p.Project.EffectiveGroup : p.Group.Trim(),
                     status = p.Project.EffectiveStatus,
                     file = p.FileName,
                     total = p.Records.Count,

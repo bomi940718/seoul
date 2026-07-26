@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Globalization;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -16,6 +17,25 @@ using WorkReport.Core.Reporting;
 
 namespace WorkReport.AddIn.UI
 {
+    /// <summary>별칭 목록 ↔ "A, B" 문자열 (그리드에서 편집하기 위한 변환).</summary>
+    public class AliasListConverter : IValueConverter
+    {
+        public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+        {
+            var list = value as List<string>;
+            return list == null ? "" : string.Join(", ", list);
+        }
+
+        public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        {
+            return ((value as string) ?? "")
+                .Split(',')
+                .Select(s => s.Trim())
+                .Where(s => s.Length > 0)
+                .ToList();
+        }
+    }
+
     /// <summary>프로젝트 관리 창 — projects.json 편집 + 미등록 키 감지.</summary>
     public class ProjectsWindow : Window
     {
@@ -29,6 +49,17 @@ namespace WorkReport.AddIn.UI
         private readonly ListView _unregisteredList = new ListView();
         private readonly TextBlock _scanStatus = new TextBlock { Foreground = Brushes.Gray, FontSize = 11 };
         private readonly Button _scanButton = new Button { Content = "일지에서 미등록 키 검색", Padding = new Thickness(10, 4, 10, 4) };
+        private readonly Button _mergeButton = new Button
+        {
+            Content = "H·I 뒤바뀐 쌍 합치기…",
+            Padding = new Thickness(10, 4, 10, 4),
+            IsEnabled = false,
+        };
+        private readonly TextBox _groupsBox = new TextBox { Padding = new Thickness(4, 3, 4, 3) };
+
+        /// <summary>마지막 스캔에서 찾은 레코드 (뒤바뀐 쌍 병합에 재사용).</summary>
+        private List<WorkRecord> _scannedRecords = new List<WorkRecord>();
+        private List<MirrorPair> _mirrorPairs = new List<MirrorPair>();
 
         /// <summary>저장하고 닫혔는지. DialogResult는 ShowDialog로 띄운 창에서만 대입할 수 있어 사용하지 않는다.</summary>
         public bool Saved { get; private set; }
@@ -52,17 +83,45 @@ namespace WorkReport.AddIn.UI
             root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
             root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 
-            root.Children.Add(Row(0, new TextBlock
+            var header = new StackPanel { Margin = new Thickness(0, 0, 0, 8) };
+            header.Children.Add(new TextBlock
             {
                 Text = "등록 파일: " + (_registry.LoadedFrom ?? "(경로 없음)"),
                 Foreground = Brushes.Gray,
-                Margin = new Thickness(0, 0, 0, 8),
                 TextWrapping = TextWrapping.Wrap,
-            }));
+            });
+
+            var groupRow = new Grid { Margin = new Thickness(0, 6, 0, 0) };
+            groupRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            groupRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            var groupLabel = new TextBlock
+            {
+                Text = "그룹 이름 ",
+                FontWeight = FontWeights.Bold,
+                VerticalAlignment = VerticalAlignment.Center,
+            };
+            Grid.SetColumn(groupLabel, 0);
+            groupRow.Children.Add(groupLabel);
+            _groupsBox.Text = string.Join(", ", _registry.Groups ?? new List<string>());
+            _groupsBox.ToolTip = "쉼표로 구분해 적으세요. 프로젝트의 그룹 칸이 비어 있으면 "
+                               + "일지의 H·I 열에서 이 이름을 찾아 자동으로 배정합니다. 앞에 적은 것이 우선입니다.";
+            Grid.SetColumn(_groupsBox, 1);
+            groupRow.Children.Add(_groupsBox);
+            header.Children.Add(groupRow);
+            header.Children.Add(new TextBlock
+            {
+                Text = "예: ARCHITECTURE, INTERIOR, EDUCATION, BRANDING, MANAGEMENT, PLANNING"
+                     + "  —  아래 그룹 칸을 직접 채우면 그 값이 우선합니다.",
+                Foreground = Brushes.Gray,
+                FontSize = 11,
+                Margin = new Thickness(0, 3, 0, 0),
+                TextWrapping = TextWrapping.Wrap,
+            });
+            root.Children.Add(Row(0, header));
 
             // 본문: 왼쪽 그리드 / 오른쪽 미등록 키
             var body = new Grid();
-            body.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(2.6, GridUnitType.Star) });
+            body.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(3.0, GridUnitType.Star) });
             body.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(8) });
             body.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star), MinWidth = 240 });
             body.Children.Add(Column(0, BuildGridPanel()));
@@ -100,14 +159,25 @@ namespace WorkReport.AddIn.UI
             _grid.SelectionMode = DataGridSelectionMode.Extended;
             // 고정 너비 합계가 패널 폭에 맞게 잡혀 있다. 창을 줄이면 star 대신 가로 스크롤로 처리한다.
             _grid.HorizontalScrollBarVisibility = ScrollBarVisibility.Auto;
-            _grid.Columns.Add(TextColumn("넘버 (일지 I열 매칭 키)", nameof(ProjectInfo.Number), 170));
-            _grid.Columns.Add(TextColumn("이름", nameof(ProjectInfo.Name), 160));
-            _grid.Columns.Add(TextColumn("그룹", nameof(ProjectInfo.Group), 100));
+            _grid.Columns.Add(TextColumn("넘버 (일지 I열 매칭 키)", nameof(ProjectInfo.Number), 155));
+            _grid.Columns.Add(TextColumn("이름", nameof(ProjectInfo.Name), 130));
+            _grid.Columns.Add(TextColumn("그룹", nameof(ProjectInfo.Group), 90));
+            var aliasCol = new DataGridTextColumn
+            {
+                Header = "같은 프로젝트 넘버",
+                Width = 140,
+                Binding = new Binding(nameof(ProjectInfo.Aliases))
+                {
+                    Converter = new AliasListConverter(),
+                    UpdateSourceTrigger = UpdateSourceTrigger.LostFocus,
+                },
+            };
+            _grid.Columns.Add(aliasCol);
             _grid.Columns.Add(StatusColumn());
             _grid.Columns.Add(new DataGridCheckBoxColumn
             {
                 Header = "활성",
-                Width = 46,
+                Width = 50,
                 Binding = new Binding(nameof(ProjectInfo.Active)) { UpdateSourceTrigger = UpdateSourceTrigger.PropertyChanged },
             });
             // 마지막 열은 남는 폭을 채워 가로 스크롤이 생기지 않게 한다
@@ -189,6 +259,9 @@ namespace WorkReport.AddIn.UI
             var register = new Button { Content = "선택 항목 등록하기 →", Padding = new Thickness(10, 4, 10, 4) };
             register.Click += (s, e) => RegisterSelectedKey();
             bottom.Children.Add(register);
+            _mergeButton.Margin = new Thickness(0, 6, 0, 0);
+            _mergeButton.Click += (s, e) => MergeMirrorPairs();
+            bottom.Children.Add(_mergeButton);
             _scanButton.Margin = new Thickness(0, 6, 0, 0);
             _scanButton.Click += (s, e) => StartScan();
             bottom.Children.Add(_scanButton);
@@ -255,11 +328,132 @@ namespace WorkReport.AddIn.UI
             {
                 Number = key.Number,
                 Name = key.SampleProjectName ?? "",
-                Group = "ETC",
+                Group = "",     // 비워두면 그룹 이름 목록으로 자동 배정된다
                 Status = ProjectInfo.StatusActive,
                 Active = true,
             });
             _unregistered.Remove(key);
+        }
+
+        /// <summary>
+        /// H·I 열을 바꿔 적어 갈라진 쌍을 한 프로젝트로 묶는다.
+        /// 기록이 많은 쪽을 남기고 반대쪽을 별칭으로 넣으며, 반대쪽이 따로 등록돼 있으면 그 행은 지운다.
+        /// 실제 반영은 [저장]을 눌러야 하고, 엑셀 일지는 건드리지 않는다.
+        /// </summary>
+        private void MergeMirrorPairs()
+        {
+            if (_mirrorPairs.Count == 0)
+            {
+                MessageBox.Show("뒤바뀐 쌍이 없습니다.", "워크리포트", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+            _grid.CommitEdit(DataGridEditingUnit.Row, true);
+
+            var plan = new List<string>();
+            var actions = new List<Action>();
+            var conflicts = new List<string>();
+
+            foreach (var pair in _mirrorPairs)
+            {
+                var projA = FindItem(pair.Primary);
+                var projB = FindItem(pair.Secondary);
+
+                // 이미 같은 프로젝트로 묶여 있음
+                if (projA != null && ReferenceEquals(projA, projB)) continue;
+
+                if (projA == null && projB == null)
+                {
+                    // 둘 다 미등록 — 많은 쪽을 넘버로, 반대쪽을 별칭으로 새로 만든다
+                    var p = pair;
+                    plan.Add($"새로 등록: {p.Primary} (+{p.Secondary})   {p.Total}건");
+                    actions.Add(() => _items.Add(new ProjectInfo
+                    {
+                        Number = p.Primary,
+                        Name = SampleNameFor(p.Primary),
+                        Group = "",
+                        Status = ProjectInfo.StatusActive,
+                        Active = true,
+                        Aliases = new List<string> { p.Secondary },
+                    }));
+                    continue;
+                }
+
+                if (projA != null && projB != null)
+                {
+                    // 양쪽 다 등록돼 있다. 한쪽이 "그 넘버 자체로 등록된 행"일 때만 안전하게 합칠 수 있다.
+                    // 그렇지 않으면 이 넘버가 다른 프로젝트에서도 쓰이고 있다는 뜻이라 건드리지 않는다.
+                    var keepBoth = projA;
+                    var dropBoth = projB;
+                    string aliasBoth = pair.Secondary;
+                    if (!IsOwnNumber(dropBoth, pair.Secondary) || !IsOwnNumber(keepBoth, pair.Primary))
+                    {
+                        conflicts.Add($"{pair.Primary} ↔ {pair.Secondary}: " +
+                                      $"\"{pair.Secondary}\" 을(를) 다른 프로젝트도 쓰고 있어 건너뜁니다");
+                        continue;
+                    }
+                    plan.Add($"합치기: {keepBoth.Number} ← {aliasBoth}   ({pair.Total}건, 중복 행 삭제)");
+                    actions.Add(() =>
+                    {
+                        if (keepBoth.Aliases == null) keepBoth.Aliases = new List<string>();
+                        keepBoth.Aliases.Add(aliasBoth);
+                        _items.Remove(dropBoth);
+                    });
+                    continue;
+                }
+
+                // 한쪽만 등록됨 — 나머지를 별칭으로 붙인다
+                var keep = projA ?? projB;
+                string alias = projA != null ? pair.Secondary : pair.Primary;
+                plan.Add($"별칭 추가: {keep.Number} ← {alias}   ({pair.Total}건)");
+                actions.Add(() =>
+                {
+                    if (keep.Aliases == null) keep.Aliases = new List<string>();
+                    keep.Aliases.Add(alias);
+                });
+            }
+
+            if (plan.Count == 0)
+            {
+                MessageBox.Show(
+                    conflicts.Count == 0
+                        ? "이미 모두 합쳐져 있습니다."
+                        : "합칠 수 있는 쌍이 없습니다.\n\n" + string.Join("\n", conflicts),
+                    "워크리포트", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            string message = "다음과 같이 합칩니다:\n\n" + string.Join("\n", plan);
+            if (conflicts.Count > 0)
+                message += "\n\n건너뛰는 항목:\n" + string.Join("\n", conflicts);
+            message += "\n\n엑셀 일지는 전혀 바뀌지 않습니다. [저장]을 눌러야 실제로 반영됩니다.\n\n진행할까요?";
+
+            var answer = MessageBox.Show(message,
+                "워크리포트 — 뒤바뀐 쌍 합치기", MessageBoxButton.YesNo, MessageBoxImage.Question);
+            if (answer != MessageBoxResult.Yes) return;
+
+            foreach (var act in actions) act();
+            _grid.Items.Refresh();
+            Logger.Info($"뒤바뀐 쌍 병합: {plan.Count}건 — {string.Join(" / ", plan)}");
+            StartScan();   // 미등록 목록·쌍 목록을 다시 계산
+        }
+
+        private ProjectInfo FindItem(string number)
+        {
+            string key = KeyNormalizer.Normalize(number);
+            return _items.FirstOrDefault(p => p.AllNumbers.Any(n => KeyNormalizer.Normalize(n) == key));
+        }
+
+        /// <summary>그 넘버가 이 프로젝트의 대표 넘버인가 (별칭이 아니라).</summary>
+        private static bool IsOwnNumber(ProjectInfo p, string number)
+            => KeyNormalizer.Normalize(p.Number) == KeyNormalizer.Normalize(number);
+
+        /// <summary>넘버에 해당하는 H열 값 하나를 이름 기본값으로 가져온다.</summary>
+        private string SampleNameFor(string number)
+        {
+            string key = KeyNormalizer.Normalize(number);
+            var rec = _scannedRecords.FirstOrDefault(
+                r => KeyNormalizer.Normalize(r.ProjectNumber) == key && !string.IsNullOrWhiteSpace(r.ProjectName));
+            return rec == null ? "" : rec.ProjectName.Trim();
         }
 
         /// <summary>일지를 백그라운드에서 파싱해 미등록 키 목록을 채운다 (수 초 소요).</summary>
@@ -270,16 +464,17 @@ namespace WorkReport.AddIn.UI
             _scanStatus.Text = "일지를 읽는 중…";
             _scanStatus.Foreground = Brushes.Gray;
 
-            var registered = _items.Select(p => p.Number).ToList();
+            _mergeButton.IsEnabled = false;
+            var registered = _items.Select(p => new ProjectInfo { Number = p.Number, Aliases = p.Aliases }).ToList();
             var settings = _settings;
 
             Task.Run(() =>
             {
                 var warnings = new List<string>();
                 var records = RefreshService.ParseJournals(settings, warnings);
-                var keys = ReportBuilder.FindUnregisteredKeys(
-                    records, registered.Select(n => new ProjectInfo { Number = n }));
-                return new { Keys = keys, Warnings = warnings, Total = records.Count };
+                var keys = ReportBuilder.FindUnregisteredKeys(records, registered);
+                var mirrors = ReportBuilder.FindMirrorPairs(records);
+                return new { Keys = keys, Warnings = warnings, Total = records.Count, Records = records, Mirrors = mirrors };
             })
             .ContinueWith(t =>
             {
@@ -293,6 +488,13 @@ namespace WorkReport.AddIn.UI
                     return;
                 }
                 foreach (var k in t.Result.Keys) _unregistered.Add(k);
+                _scannedRecords = t.Result.Records;
+                _mirrorPairs = t.Result.Mirrors;
+                _mergeButton.IsEnabled = _mirrorPairs.Count > 0;
+                _mergeButton.Content = _mirrorPairs.Count > 0
+                    ? $"H·I 뒤바뀐 쌍 {_mirrorPairs.Count}건 합치기…"
+                    : "H·I 뒤바뀐 쌍 없음";
+
                 _scanStatus.Text = t.Result.Keys.Count == 0
                     ? $"레코드 {t.Result.Total}건 — 미등록 키 없음"
                     : $"레코드 {t.Result.Total}건 — 미등록 {t.Result.Keys.Count}종";
@@ -331,11 +533,40 @@ namespace WorkReport.AddIn.UI
 
                 p.Number = number;
                 p.Name = (p.Name ?? "").Trim();
-                p.Group = string.IsNullOrWhiteSpace(p.Group) ? "ETC" : p.Group.Trim();
+                // 그룹은 비워둘 수 있다 — 비면 그룹 이름 목록으로 자동 배정된다
+                p.Group = (p.Group ?? "").Trim();
                 p.Status = p.EffectiveStatus;
                 p.OutputDir = string.IsNullOrWhiteSpace(p.OutputDir) ? null : p.OutputDir.Trim();
+
+                // 별칭: 공백 제거, 자기 넘버·중복 제외
+                var aliases = new List<string>();
+                foreach (var raw in p.Aliases ?? new List<string>())
+                {
+                    string a = (raw ?? "").Trim();
+                    if (a.Length == 0) continue;
+                    string ak = KeyNormalizer.Normalize(a);
+                    if (ak == key || aliases.Any(x => KeyNormalizer.Normalize(x) == ak)) continue;
+                    if (seen.ContainsKey(ak))
+                    {
+                        MessageBox.Show($"\"{a}\" 은(는) 이미 \"{seen[ak]}\" 에서 쓰고 있습니다.\n" +
+                                        "같은 넘버를 두 프로젝트가 함께 쓸 수는 없습니다.",
+                            "워크리포트", MessageBoxButton.OK, MessageBoxImage.Warning);
+                        return;
+                    }
+                    aliases.Add(a);
+                    seen[ak] = number;
+                }
+                p.Aliases = aliases;
+
                 cleaned.Add(p);
             }
+
+            var groupNames = _groupsBox.Text
+                .Split(',')
+                .Select(s => s.Trim())
+                .Where(s => s.Length > 0)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
 
             // 락 없는 공유 파일이므로, 로드 이후 상대가 수정했으면 덮어쓰기 전에 경고한다
             if (_registry.HasExternalChange())
@@ -360,8 +591,10 @@ namespace WorkReport.AddIn.UI
             try
             {
                 _registry.Projects = cleaned;
+                _registry.Groups = groupNames;
                 _registry.Save();
-                Logger.Info($"projects.json 저장: {cleaned.Count}건 (활성 {cleaned.Count(p => p.Active)}건)");
+                Logger.Info($"projects.json 저장: {cleaned.Count}건 (활성 {cleaned.Count(p => p.Active)}건), " +
+                            $"그룹 [{string.Join(", ", groupNames)}]");
             }
             catch (Exception ex)
             {

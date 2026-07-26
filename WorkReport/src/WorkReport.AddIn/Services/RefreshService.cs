@@ -101,7 +101,7 @@ namespace WorkReport.AddIn.Services
 
             var allRecords = ParseJournals(settings, result.Warnings);
 
-            var reportData = ReportBuilder.Build(allRecords, registry.Projects);
+            var reportData = ReportBuilder.Build(allRecords, registry.Projects, registry.Groups);
             result.UnregisteredKeys = ReportBuilder.FindUnregisteredKeys(allRecords, registry.Projects);
             if (result.UnregisteredKeys.Count > 0)
                 Logger.Warn("미등록 키: " + string.Join(", ", result.UnregisteredKeys.Select(k => $"{k.Number}({k.Count})")));
