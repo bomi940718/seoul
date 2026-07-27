@@ -19,8 +19,15 @@ namespace WorkReport.Core.Tests
                 SourceRow = row,
             };
 
-        private static readonly List<string> Groups =
-            new List<string> { "ARCHITECTURE", "INTERIOR", "EDUCATION", "BRANDING", "MANAGEMENT", "PLANNING" };
+        private static readonly List<GroupRule> Groups = new List<GroupRule>
+        {
+            new GroupRule("ARCHITECTURE"),
+            new GroupRule("INTERIOR"),
+            new GroupRule("EDUCATION"),
+            new GroupRule("BRANDING"),
+            new GroupRule("MANAGEMENT"),
+            new GroupRule("PLANNING"),
+        };
 
         // ---------- 그룹 자동 배정 ----------
 
@@ -38,7 +45,33 @@ namespace WorkReport.Core.Tests
         [Fact]
         public void 한_글자_그룹은_아무데나_걸리지_않게_무시한다()
         {
-            Assert.Null(GroupResolver.MatchOne("ARCHITECTURE", new[] { "A" }));
+            Assert.Null(GroupResolver.MatchOne("ARCHITECTURE", new[] { new GroupRule("A") }));
+        }
+
+        [Fact]
+        public void 이름이_달라도_키워드로_그룹을_찾는다()
+        {
+            // 일지에는 BRANDING-1 으로 적히지만 그룹 이름은 LUNCHING
+            var rules = new[] { new GroupRule("LUNCHING", "BRANDING") };
+
+            Assert.Equal("LUNCHING", GroupResolver.MatchOne("BRANDING-1", rules));
+            Assert.Equal("LUNCHING", GroupResolver.MatchOne("BRANDING-2", rules));
+            Assert.Null(GroupResolver.MatchOne("EDUCATION", rules));
+        }
+
+        [Fact]
+        public void 그룹_규칙_문자열을_읽고_다시_쓴다()
+        {
+            var parsed = GroupResolver.Parse("ARCHITECTURE = Planning project, 용도변경\r\nINTERIOR\n\nLUNCHING = BRANDING");
+
+            Assert.Equal(3, parsed.Count);
+            Assert.Equal("ARCHITECTURE", parsed[0].Name);
+            Assert.Equal(new[] { "Planning project", "용도변경" }, parsed[0].Keywords);
+            Assert.Equal("INTERIOR", parsed[1].Name);
+            Assert.Empty(parsed[1].Keywords);
+
+            string text = GroupResolver.Format(parsed);
+            Assert.Equal(GroupResolver.Format(GroupResolver.Parse(text)), text);   // 왕복해도 같다
         }
 
         [Fact]
@@ -86,7 +119,7 @@ namespace WorkReport.Core.Tests
         public void 그룹_목록이_비어_있으면_ETC()
         {
             var project = new ProjectInfo { Number = "X" };
-            Assert.Equal("ETC", GroupResolver.Resolve(project, new[] { Rec("EDUCATION", "X") }, new List<string>()));
+            Assert.Equal("ETC", GroupResolver.Resolve(project, new[] { Rec("EDUCATION", "X") }, new List<GroupRule>()));
         }
 
         // ---------- 넘버 별칭 ----------
@@ -137,7 +170,11 @@ namespace WorkReport.Core.Tests
             try
             {
                 var reg = WorkReport.Core.Config.ProjectRegistry.Load(dir);
-                reg.Groups = new List<string> { "ARCHITECTURE", "INTERIOR" };
+                reg.Groups = new List<GroupRule>
+                {
+                    new GroupRule("ARCHITECTURE"),
+                    new GroupRule("LUNCHING", "BRANDING"),
+                };
                 reg.Projects.Add(new ProjectInfo
                 {
                     Number = "IN_BEGINNING",
@@ -148,7 +185,9 @@ namespace WorkReport.Core.Tests
 
                 var again = WorkReport.Core.Config.ProjectRegistry.Load(dir);
 
-                Assert.Equal(new[] { "ARCHITECTURE", "INTERIOR" }, again.Groups);
+                Assert.Equal(new[] { "ARCHITECTURE", "LUNCHING" }, again.Groups.Select(g => g.Name));
+                Assert.Empty(again.Groups[0].Keywords);
+                Assert.Equal(new[] { "BRANDING" }, again.Groups[1].Keywords);
                 Assert.Equal(new[] { "INTERIOR" }, again.Projects.Single().Aliases);
                 Assert.Equal(new[] { "IN_BEGINNING", "INTERIOR" }, again.Projects.Single().AllNumbers);
             }

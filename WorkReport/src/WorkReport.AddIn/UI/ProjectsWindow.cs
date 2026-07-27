@@ -91,27 +91,28 @@ namespace WorkReport.AddIn.UI
                 TextWrapping = TextWrapping.Wrap,
             });
 
-            var groupRow = new Grid { Margin = new Thickness(0, 6, 0, 0) };
-            groupRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            groupRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            var groupLabel = new TextBlock
-            {
-                Text = "그룹 이름 ",
-                FontWeight = FontWeights.Bold,
-                VerticalAlignment = VerticalAlignment.Center,
-            };
-            Grid.SetColumn(groupLabel, 0);
-            groupRow.Children.Add(groupLabel);
-            _groupsBox.Text = string.Join(", ", _registry.Groups ?? new List<string>());
-            _groupsBox.ToolTip = "쉼표로 구분해 적으세요. 프로젝트의 그룹 칸이 비어 있으면 "
-                               + "일지의 H·I 열에서 이 이름을 찾아 자동으로 배정합니다. 앞에 적은 것이 우선입니다.";
-            Grid.SetColumn(_groupsBox, 1);
-            groupRow.Children.Add(_groupsBox);
-            header.Children.Add(groupRow);
             header.Children.Add(new TextBlock
             {
-                Text = "예: ARCHITECTURE, INTERIOR, EDUCATION, BRANDING, MANAGEMENT, PLANNING"
-                     + "  —  아래 그룹 칸을 직접 채우면 그 값이 우선합니다.",
+                Text = "그룹 규칙 — 한 줄에 하나. 이름만 적거나, 일지 표기가 다르면 \"이름 = 키워드, 키워드\"",
+                FontWeight = FontWeights.Bold,
+                Margin = new Thickness(0, 6, 0, 3),
+            });
+
+            _groupsBox.Text = GroupResolver.Format(_registry.Groups);
+            _groupsBox.AcceptsReturn = true;
+            _groupsBox.TextWrapping = TextWrapping.NoWrap;
+            _groupsBox.VerticalScrollBarVisibility = ScrollBarVisibility.Auto;
+            _groupsBox.HorizontalScrollBarVisibility = ScrollBarVisibility.Auto;
+            _groupsBox.Height = 92;
+            _groupsBox.FontFamily = new FontFamily("Consolas, D2Coding, 맑은 고딕");
+            _groupsBox.ToolTip =
+                "프로젝트의 그룹 칸이 비어 있으면, 일지의 H·I 열에서 이 키워드를 찾아 그룹을 자동 배정합니다.\n"
+                + "그룹 이름 자체도 키워드로 쓰이며, 위에 적은 줄이 우선합니다.\n"
+                + "예) LUNCHING = BRANDING  →  일지의 BRANDING-1·BRANDING-2가 LUNCHING 탭으로";
+            header.Children.Add(_groupsBox);
+            header.Children.Add(new TextBlock
+            {
+                Text = "아래 표의 그룹 칸을 직접 채우면 그 값이 규칙보다 우선합니다. 아무 규칙에도 걸리지 않으면 ETC.",
                 Foreground = Brushes.Gray,
                 FontSize = 11,
                 Margin = new Thickness(0, 3, 0, 0),
@@ -561,12 +562,7 @@ namespace WorkReport.AddIn.UI
                 cleaned.Add(p);
             }
 
-            var groupNames = _groupsBox.Text
-                .Split(',')
-                .Select(s => s.Trim())
-                .Where(s => s.Length > 0)
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .ToList();
+            var groupRules = GroupResolver.Parse(_groupsBox.Text);
 
             // 락 없는 공유 파일이므로, 로드 이후 상대가 수정했으면 덮어쓰기 전에 경고한다
             if (_registry.HasExternalChange())
@@ -591,10 +587,10 @@ namespace WorkReport.AddIn.UI
             try
             {
                 _registry.Projects = cleaned;
-                _registry.Groups = groupNames;
+                _registry.Groups = groupRules;
                 _registry.Save();
                 Logger.Info($"projects.json 저장: {cleaned.Count}건 (활성 {cleaned.Count(p => p.Active)}건), " +
-                            $"그룹 [{string.Join(", ", groupNames)}]");
+                            $"그룹 [{string.Join(" | ", groupRules.Select(g => g.Name))}]");
             }
             catch (Exception ex)
             {

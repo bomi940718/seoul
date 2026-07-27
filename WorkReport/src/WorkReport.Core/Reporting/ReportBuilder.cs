@@ -39,7 +39,7 @@ namespace WorkReport.Core.Reporting
     public static class ReportBuilder
     {
         public static List<ProjectReportData> Build(IEnumerable<WorkRecord> allRecords,
-            IEnumerable<ProjectInfo> activeProjects, IList<string> groups = null)
+            IEnumerable<ProjectInfo> activeProjects, IList<GroupRule> groups = null)
         {
             var projects = activeProjects.Where(p => p.Active).ToList();
             var dataByProject = new List<ProjectReportData>();
