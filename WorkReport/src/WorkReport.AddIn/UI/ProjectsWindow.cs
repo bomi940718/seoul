@@ -198,10 +198,19 @@ namespace WorkReport.AddIn.UI
                 Status = ProjectInfo.StatusActive,
                 Active = true,
             });
-            var del = new Button { Content = "－ 삭제", Padding = new Thickness(12, 4, 12, 4) };
+            var del = new Button { Content = "－ 삭제", Padding = new Thickness(12, 4, 12, 4), Margin = new Thickness(0, 0, 6, 0) };
             del.Click += OnDelete;
+            var mergeSel = new Button
+            {
+                Content = "선택 행 합치기",
+                Padding = new Thickness(12, 4, 12, 4),
+                ToolTip = "Ctrl 또는 Shift로 두 줄 이상 고른 뒤 누르면 한 프로젝트(한 리포트)로 합칩니다.\n"
+                        + "기록이 많은 쪽이 대표가 되고 나머지 넘버는 '같은 프로젝트 넘버'로 들어갑니다.",
+            };
+            mergeSel.Click += OnMergeSelected;
             bar.Children.Add(add);
             bar.Children.Add(del);
+            bar.Children.Add(mergeSel);
             bar.Children.Add(new TextBlock
             {
                 Text = "  그룹은 대시보드 탭 이름입니다 (영어 대문자 권장). 완료 상태는 대시보드에서 기본 숨김.",
@@ -315,6 +324,60 @@ namespace WorkReport.AddIn.UI
                 "워크리포트 — 프로젝트 삭제", MessageBoxButton.YesNo, MessageBoxImage.Question);
             if (answer != MessageBoxResult.Yes) return;
             foreach (var p in selected) _items.Remove(p);
+        }
+
+        /// <summary>
+        /// 고른 행들을 한 프로젝트로 합친다. 일지 기록이 많은 행이 대표가 되고,
+        /// 나머지 행의 넘버·별칭은 대표의 "같은 프로젝트 넘버"로 옮긴 뒤 그 행을 지운다.
+        /// </summary>
+        private void OnMergeSelected(object sender, RoutedEventArgs e)
+        {
+            _grid.CommitEdit(DataGridEditingUnit.Row, true);
+            var selected = _grid.SelectedItems.Cast<ProjectInfo>().ToList();
+            if (selected.Count < 2)
+            {
+                MessageBox.Show("합칠 행을 두 줄 이상 고르세요. (Ctrl 또는 Shift로 여러 줄 선택)",
+                    "워크리포트", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            // 일지 기록이 가장 많은 행을 대표로
+            var main = selected.OrderByDescending(CountRecords).ThenBy(p => selected.IndexOf(p)).First();
+            var others = selected.Where(p => !ReferenceEquals(p, main)).ToList();
+
+            var addedNumbers = new List<string>();
+            foreach (var p in others)
+                foreach (var n in p.AllNumbers)
+                {
+                    string k = KeyNormalizer.Normalize(n);
+                    if (main.AllNumbers.Any(x => KeyNormalizer.Normalize(x) == k)) continue;
+                    if (addedNumbers.Any(x => KeyNormalizer.Normalize(x) == k)) continue;
+                    addedNumbers.Add(n);
+                }
+
+            string summary = $"대표: {main.Number} ({CountRecords(main)}건)\n"
+                           + $"합쳐질 넘버: {string.Join(", ", addedNumbers)}\n"
+                           + $"삭제될 행: {string.Join(", ", others.Select(p => p.Number))}\n\n"
+                           + $"합친 뒤 리포트 1개로 나옵니다 (기록 약 {selected.Sum(CountRecords)}건).\n"
+                           + "엑셀 일지는 바뀌지 않으며, [저장]을 눌러야 반영됩니다.\n\n진행할까요?";
+
+            if (MessageBox.Show(summary, "워크리포트 — 선택 행 합치기",
+                    MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
+
+            if (main.Aliases == null) main.Aliases = new List<string>();
+            main.Aliases.AddRange(addedNumbers);
+            foreach (var p in others) _items.Remove(p);
+
+            _grid.Items.Refresh();
+            _grid.SelectedItem = main;
+            Logger.Info($"선택 행 합치기: {main.Number} ← {string.Join(", ", addedNumbers)}");
+        }
+
+        /// <summary>마지막 스캔 기준으로 그 프로젝트에 붙는 일지 기록 수.</summary>
+        private int CountRecords(ProjectInfo p)
+        {
+            var keys = new HashSet<string>(p.AllNumbers.Select(KeyNormalizer.Normalize));
+            return _scannedRecords.Count(r => keys.Contains(KeyNormalizer.Normalize(r.ProjectNumber)));
         }
 
         private void RegisterSelectedKey()
