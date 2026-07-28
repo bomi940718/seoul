@@ -27,6 +27,13 @@ public sealed class ProjectInput
     public ZoningLimits Zoning { get; set; } = new();
     public ParkingRule Parking { get; set; } = new();
 
+    /// <summary>
+    /// 사용자가 직접 등록한 지구단위계획 결정도서(고시문·조서·지침 파일).
+    /// 포털 자동조회가 되지 않는 지자체를 사용자가 파일로 보완하는 경로이며,
+    /// **등록되어 있으면 포털 자동조회보다 우선한다** (해당 필지의 문서를 직접 지정한 것이므로).
+    /// </summary>
+    public List<DistrictPlanFile> DistrictPlanFiles { get; set; } = new();
+
     /// <summary>연면적 산입 대상 층 면적 합계 (연면적 제외 층 제외)</summary>
     public double GrossFloorArea =>
         Buildings.Sum(b => b.Floors.Where(f => !f.ExcludeFromGrossArea).Sum(f => f.TotalArea));
@@ -34,6 +41,23 @@ public sealed class ProjectInput
     /// <summary>전체 바닥면적 합계 (연면적 제외 층 포함)</summary>
     public double TotalFloorArea =>
         Buildings.Sum(b => b.Floors.Sum(f => f.TotalArea));
+}
+
+/// <summary>
+/// 사용자가 직접 등록한 지구단위계획 문서 한 건.
+/// 구역명·고시번호는 검토서 인용 표기에 쓰이며, 비워두면 파일명으로 대체한다.
+/// </summary>
+public sealed class DistrictPlanFile
+{
+    public string FilePath { get; set; } = "";
+    public string? ZoneName { get; set; }      // 구역명 (예: 둔곡지구 지구단위계획구역)
+    public string? NoticeNo { get; set; }      // 고시번호 (예: 대전광역시 고시 제2023-15호)
+    public string? NoticeDate { get; set; }    // 고시일자 (예: 2023-01-20)
+
+    public string DisplayName =>
+        ZoneName is { Length: > 0 } z ? z
+        : FilePath.Length > 0 ? Path.GetFileNameWithoutExtension(FilePath)
+        : "(이름 없음)";
 }
 
 /// <summary>동(棟) 단위 면적표. 검토서의 "각 층별 면적표"에 대응.</summary>

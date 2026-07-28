@@ -69,6 +69,74 @@ public class DistrictPlanTests
         Assert.Equal("봉천동", provider.LastKeyword);   // 주소에서 법정동 추출
     }
 
+    [Fact]
+    public async Task 직접_등록한_결정도서가_포털_자동조회보다_우선한다()
+    {
+        // 사용자가 해당 필지의 문서를 직접 지정했으면 포털 후보 목록은 노이즈가 되므로 조회하지 않는다.
+        var provider = new StubProvider();
+        var engine = new LawReview.Core.Review.ReviewEngine(
+            new LawReview.Core.LawApi.MolegClient(new HttpClient(), "test"),
+            new NoJudge(), districtPlan: provider);
+
+        var file = Path.Combine(Path.GetTempPath(), $"dup_{Guid.NewGuid():N}.pdf");
+        await File.WriteAllTextAsync(file, "결정도서");
+        try
+        {
+            var project = new LawReview.Core.Models.ProjectInput
+            {
+                Province = "서울특별시", City = "관악구",
+                SiteAddress = "서울특별시 관악구 봉천동 857-1",
+                SiteArea = 100, PlannedBuildingArea = 10,
+                DistrictPlanFiles =
+                {
+                    new LawReview.Core.Models.DistrictPlanFile
+                    {
+                        FilePath = file, ZoneName = "봉천 제14 재개발 지구단위계획구역",
+                        NoticeNo = "관악구 고시 제2024-44호", NoticeDate = "2024-04-18",
+                    },
+                },
+            };
+            var item = new LawReview.Core.Review.ChecklistItem
+            {
+                Id = "district_unit_plan", Title = "지구단위계획 지침",
+                Judgment = LawReview.Core.Review.JudgmentType.Manual, Note = "확인하세요.",
+            };
+
+            var result = await engine.RunAsync(project, new[] { item });
+
+            var row = Assert.Single(result.Rows);
+            Assert.Null(provider.LastKeyword);                       // 포털 조회를 하지 않았다
+            var cite = Assert.Single(row.Citations);
+            Assert.Contains("직접 등록", cite.LawName);
+            Assert.Equal("봉천 제14 재개발 지구단위계획구역", cite.Title);
+            Assert.Contains("관악구 고시 제2024-44호", cite.Body);
+            Assert.Contains(file, cite.Body);
+            Assert.DoesNotContain("찾을 수 없습니다", cite.Body);
+            Assert.Equal(LawReview.Core.Review.Applicability.확인필요, row.Applicability);  // 판정은 유지
+        }
+        finally { File.Delete(file); }
+    }
+
+    [Fact]
+    public void 등록_파일이_없으면_경고를_남긴다()
+    {
+        var row = new LawReview.Core.Review.ReviewRow
+        {
+            Item = new LawReview.Core.Review.ChecklistItem { Id = "district_unit_plan", Title = "지구단위계획 지침" },
+        };
+        var project = new LawReview.Core.Models.ProjectInput
+        {
+            DistrictPlanFiles = { new LawReview.Core.Models.DistrictPlanFile { FilePath = @"C:\없는경로\고시문.pdf" } },
+        };
+
+        LawReview.Core.Review.ReviewEngine.AddUploadedDistrictPlanCitations(row, project);
+
+        var cite = Assert.Single(row.Citations);
+        Assert.Equal("고시문", cite.Title);              // 구역명 미입력 시 파일명으로 대체
+        Assert.Contains("찾을 수 없습니다", cite.Body);
+        Assert.Contains("파일 확인 필요", row.Reason);
+    }
+
     private sealed class StubProvider : IDistrictPlanProvider
     {
         public string? LastKeyword;

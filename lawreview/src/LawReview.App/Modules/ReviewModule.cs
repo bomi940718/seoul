@@ -45,6 +45,10 @@ public sealed class ReviewModule : IAppModule
         ClipboardCopyMode = DataGridViewClipboardCopyMode.EnableWithoutHeaderText,
     };
 
+    // 지구단위계획 결정도서 직접 등록 (포털 자동조회가 안 되는 지자체용 — 등록 시 자동조회보다 우선)
+    private readonly ListBox _districtPlanList = new() { Dock = DockStyle.Fill, IntegralHeight = false };
+    private readonly List<DistrictPlanFile> _districtPlanFiles = new();
+
     private readonly TextBox _log = new()
     {
         Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical, Dock = DockStyle.Fill,
@@ -56,10 +60,14 @@ public sealed class ReviewModule : IAppModule
     {
         var root = new SplitContainer { Dock = DockStyle.Fill, Orientation = Orientation.Horizontal, SplitterDistance = 420 };
 
-        // 상단: 입력 (좌: 프로젝트 정보, 우: 면적표)
+        // 상단: 입력 (좌: 프로젝트 정보, 우: 면적표 + 지구단위계획 등록)
         var top = new SplitContainer { Dock = DockStyle.Fill, SplitterDistance = 480 };
         top.Panel1.Controls.Add(BuildInputPanel());
-        top.Panel2.Controls.Add(BuildAreaPanel());
+
+        var right = new SplitContainer { Dock = DockStyle.Fill, Orientation = Orientation.Horizontal };
+        right.Panel1.Controls.Add(BuildAreaPanel());
+        right.Panel2.Controls.Add(BuildDistrictPlanPanel());
+        top.Panel2.Controls.Add(right);
         root.Panel1.Controls.Add(top);
 
         // 하단: 실행 버튼 + 로그
@@ -153,6 +161,104 @@ public sealed class ReviewModule : IAppModule
             if (e.Control && e.KeyCode == Keys.V) PasteIntoGrid();
         };
         return panel;
+    }
+
+    /// <summary>
+    /// 지구단위계획 결정도서 직접 등록 패널.
+    /// 서울처럼 포털 수집기가 있는 지자체는 자동조회되지만, 그 외 지역은 사용자가 파일을 등록한다.
+    /// 등록된 파일이 있으면 자동조회보다 우선한다(중복 인용 방지).
+    /// </summary>
+    private Control BuildDistrictPlanPanel()
+    {
+        var panel = new TableLayoutPanel { Dock = DockStyle.Fill, RowCount = 3, Padding = new Padding(4) };
+        panel.RowStyles.Add(new RowStyle(SizeType.Absolute, 34));
+        panel.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        panel.RowStyles.Add(new RowStyle(SizeType.Absolute, 32));
+
+        panel.Controls.Add(new Label
+        {
+            Text = "지구단위계획 결정도서 (직접 등록 시 포털 자동조회보다 우선 적용)",
+            Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft,
+        }, 0, 0);
+        panel.Controls.Add(_districtPlanList, 0, 1);
+
+        var buttons = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.LeftToRight };
+        var add = new Button { Text = "파일 등록...", Width = 110 };
+        var remove = new Button { Text = "선택 삭제", Width = 90 };
+        add.Click += (_, _) => AddDistrictPlanFiles();
+        remove.Click += (_, _) => RemoveSelectedDistrictPlan();
+        buttons.Controls.Add(add);
+        buttons.Controls.Add(remove);
+        panel.Controls.Add(buttons, 0, 2);
+        return panel;
+    }
+
+    private void AddDistrictPlanFiles()
+    {
+        using var dialog = new OpenFileDialog
+        {
+            Title = "지구단위계획 결정도서 선택 (고시문·조서·지침)",
+            Filter = "문서 (*.pdf;*.hwp;*.hwpx;*.docx;*.zip)|*.pdf;*.hwp;*.hwpx;*.docx;*.zip|모든 파일 (*.*)|*.*",
+            Multiselect = true,
+        };
+        if (dialog.ShowDialog() != DialogResult.OK) return;
+
+        foreach (var path in dialog.FileNames)
+        {
+            if (_districtPlanFiles.Any(f => string.Equals(f.FilePath, path, StringComparison.OrdinalIgnoreCase)))
+                continue;
+            // 구역명·고시번호는 검토서 표기에 쓰이며, 비워두면 파일명으로 대체된다.
+            var zone = Prompt($"구역명 (선택)\n{Path.GetFileName(path)}", "지구단위계획 등록");
+            var notice = Prompt("고시번호 (선택)\n예: 안양시 고시 제2024-15호", "지구단위계획 등록");
+            _districtPlanFiles.Add(new DistrictPlanFile
+            {
+                FilePath = path,
+                ZoneName = string.IsNullOrWhiteSpace(zone) ? null : zone.Trim(),
+                NoticeNo = string.IsNullOrWhiteSpace(notice) ? null : notice.Trim(),
+            });
+        }
+        RefreshDistrictPlanList();
+    }
+
+    private void RemoveSelectedDistrictPlan()
+    {
+        var idx = _districtPlanList.SelectedIndex;
+        if (idx < 0 || idx >= _districtPlanFiles.Count) return;
+        _districtPlanFiles.RemoveAt(idx);
+        RefreshDistrictPlanList();
+    }
+
+    private void RefreshDistrictPlanList()
+    {
+        _districtPlanList.Items.Clear();
+        foreach (var f in _districtPlanFiles)
+            _districtPlanList.Items.Add(
+                $"{f.DisplayName}{(f.NoticeNo is { Length: > 0 } n ? $"  [{n}]" : "")}  —  {Path.GetFileName(f.FilePath)}");
+    }
+
+    /// <summary>간단한 한 줄 입력 대화상자 (디자이너를 쓰지 않는 구조라 코드로 구성).</summary>
+    private static string? Prompt(string message, string title)
+    {
+        using var form = new Form
+        {
+            Text = title, Width = 460, Height = 190,
+            FormBorderStyle = FormBorderStyle.FixedDialog,
+            StartPosition = FormStartPosition.CenterParent,
+            MinimizeBox = false, MaximizeBox = false,
+        };
+        var label = new Label { Text = message, Dock = DockStyle.Top, Height = 56, Padding = new Padding(10, 10, 10, 0) };
+        var input = new TextBox { Dock = DockStyle.Top, Margin = new Padding(10) };
+        var ok = new Button { Text = "확인", DialogResult = DialogResult.OK, Dock = DockStyle.Right, Width = 90 };
+        var skip = new Button { Text = "건너뛰기", DialogResult = DialogResult.Cancel, Dock = DockStyle.Right, Width = 90 };
+        var bar = new Panel { Dock = DockStyle.Bottom, Height = 44, Padding = new Padding(10) };
+        bar.Controls.Add(ok);
+        bar.Controls.Add(skip);
+        form.Controls.Add(input);
+        form.Controls.Add(label);
+        form.Controls.Add(bar);
+        form.AcceptButton = ok;
+        form.CancelButton = skip;
+        return form.ShowDialog() == DialogResult.OK ? input.Text : null;
     }
 
     private void PasteIntoGrid()
@@ -358,6 +464,7 @@ public sealed class ReviewModule : IAppModule
                 AreaPerSpace = ParseArea(_parkingAreaPerSpace.Text, "주차 기준 면적"),
                 Source = _parkingSource.Text.Trim(),
             },
+            DistrictPlanFiles = _districtPlanFiles.ToList(),
         };
 
         foreach (DataGridViewRow row in _areaGrid.Rows)

@@ -224,11 +224,20 @@ public sealed class ReviewEngine
     }
 
     /// <summary>
-    /// 지구단위계획 항목에 지자체 포털 조회 결과를 붙인다. 판정은 "확인필요"를 유지하고
-    /// (도면 규제는 자동 판정 불가 — 검토 품질 원칙 5), 후보 구역과 고시문 원문 링크만 인용한다.
+    /// 지구단위계획 항목의 근거를 붙인다. 출처 우선순위:
+    ///   1) 사용자가 직접 등록한 결정도서 파일 — 해당 필지 문서를 직접 지정한 것이므로 가장 우선하며,
+    ///      이때 포털 후보 목록은 노이즈가 되므로 조회하지 않는다.
+    ///   2) 해당 지자체 포털 수집기(현재 서울) — 법정동 키워드로 후보 구역 조회.
+    ///   3) 둘 다 없으면 체크리스트의 수동 확인 안내를 유지.
+    /// 어느 경로든 판정은 "확인필요"를 유지한다 (도면 규제는 자동 판정 불가 — 검토 품질 원칙 5).
     /// </summary>
     private async Task EnrichDistrictPlanAsync(ReviewRow row, ProjectInput project, CancellationToken ct)
     {
+        if (project.DistrictPlanFiles.Count > 0)
+        {
+            AddUploadedDistrictPlanCitations(row, project);
+            return;     // 직접 등록이 있으면 포털 조회는 건너뛴다
+        }
         if (_districtPlan is null) return;
         if (!project.Province.Replace(" ", "").StartsWith(_districtPlan.Province.Replace(" ", "")[..2])) return;
         var keyword = DistrictPlanProviders.KeywordFromAddress(project.SiteAddress);
@@ -261,6 +270,37 @@ public sealed class ReviewEngine
             row.Reason = $"지구단위계획 포털 조회에 실패했습니다 ({ex.Message}). 포털에서 직접 확인하세요: " +
                          SeoulUrbanPortalClient.PortalPageUrl;
         }
+    }
+
+    /// <summary>
+    /// 사용자가 직접 등록한 결정도서를 검토서 근거로 인용한다.
+    /// 파일 내용(특히 지침도)은 자동 해석하지 않으므로 출처·경로만 명시하고 판정은 확인필요를 유지한다.
+    /// </summary>
+    internal static void AddUploadedDistrictPlanCitations(ReviewRow row, ProjectInput project)
+    {
+        var missing = new List<string>();
+        foreach (var f in project.DistrictPlanFiles)
+        {
+            var exists = f.FilePath.Length > 0 && File.Exists(f.FilePath);
+            if (!exists) missing.Add(f.DisplayName);
+
+            var lines = new List<string>();
+            if (f.NoticeNo is { Length: > 0 } no)
+                lines.Add(no + (f.NoticeDate is { Length: > 0 } d ? $" ({d} 고시)" : ""));
+            else if (f.NoticeDate is { Length: > 0 } d2)
+                lines.Add($"{d2} 고시");
+            lines.Add($"등록 파일: {(f.FilePath.Length > 0 ? f.FilePath : "(경로 없음)")}");
+            if (!exists) lines.Add("⚠ 파일을 찾을 수 없습니다. 경로를 확인하세요.");
+            lines.Add("지침 내용(도면 포함)은 등록된 원본 문서에서 직접 확인해야 합니다.");
+
+            row.Citations.Add(new CitedArticle(
+                "지구단위계획 (직접 등록)", "-", f.DisplayName,
+                string.Join("\n", lines), f.NoticeDate ?? ""));
+        }
+
+        row.Reason = $"사용자가 등록한 지구단위계획 결정도서 {project.DistrictPlanFiles.Count}건을 근거로 합니다" +
+                     (missing.Count > 0 ? $" (파일 확인 필요: {string.Join(", ", missing)})" : "") +
+                     ". 지침도 규제는 자동 판정 대상이 아니므로 원본 문서로 직접 확인하세요.";
     }
 
     /// <summary>
