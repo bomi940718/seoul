@@ -339,7 +339,7 @@ $("#btnLookup").addEventListener("click", async () => {
   status("주소 조회 중…");
   const r = await fetch("/api/lookup", {
     method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ address: state.project.siteAddress }),
+    body: JSON.stringify({ address: state.project.siteAddress, primaryUse: state.project.primaryUse }),
   });
   const d = await r.json();
   if (!d.ok) { status("조회 실패: " + d.message); return; }
@@ -362,7 +362,20 @@ $("#btnLookup").addEventListener("click", async () => {
     limitNote = " / 법정 한도는 조례에서 찾지 못했습니다 — 직접 입력하세요";
   }
 
-  status(`자동조회 완료 — ${d.province} ${d.city} / 지목 ${d.category || "-"} / ${d.zones.length}개 지역·지구${limitNote}`);
+  // 부설주차장 설치기준 — 시행령 별표에서 가져오고, 조례로 달라질 수 있음을 함께 알린다.
+  let parkNote = "";
+  if (d.parking?.areaPerSpace) {
+    setCell("parkingOut", "legal", String(d.parking.areaPerSpace));
+    const basis = [d.parking.basis, d.parking.ordinanceName ? `${d.parking.ordinanceName} 별표 확인 필요` : ""]
+      .filter(Boolean).join("\n");
+    setCell("parkingOut", "basis", basis);
+    state.parkingOrdinanceLink = d.parking.ordinanceAnnexLink || "";
+    parkNote = ` / 주차 ${d.parking.areaPerSpace}㎡당 1대 (${d.parking.matchedUse || ""} — 조례 확인 필요)`;
+  } else if (state.project.primaryUse) {
+    parkNote = " / 주차 기준을 찾지 못했습니다 — 직접 입력하세요";
+  }
+
+  status(`자동조회 완료 — ${d.province} ${d.city} / 지목 ${d.category || "-"} / ${d.zones.length}개 지역·지구${limitNote}${parkNote}`);
   recalc();
 });
 

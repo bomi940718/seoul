@@ -140,7 +140,11 @@ public sealed class MolegClient
                         Number: FormatBranchedNumber(GetString(b, "별표번호") ?? "", GetString(b, "별표가지번호")),
                         Title: title,
                         Kind: GetString(b, "별표구분") ?? "별표",
-                        Link: AbsoluteLink(GetString(b, "별표서식PDF파일링크") ?? GetString(b, "별표서식파일링크") ?? "")));
+                        Link: AbsoluteLink(GetString(b, "별표서식PDF파일링크") ?? GetString(b, "별표서식파일링크")
+                                           ?? GetString(b, "별표첨부파일명") ?? ""),
+                        // 법령 별표는 본문이 텍스트로 들어온다(자치법규 별표는 HWP 첨부라 비어 있다).
+                        Content: b.TryGetProperty("별표내용", out var ac)
+                            ? string.Join("\n", FlattenStrings(ac)) : ""));
                 }
             }
         }
@@ -369,8 +373,11 @@ public sealed record LawText(
     private static string Normalize(string s) => s.Replace(" ", "").Replace("ㆍ", "·");
 }
 
-/// <summary>법령 본문에 포함된 별표. 내용은 파일이므로 링크로 안내한다.</summary>
-public sealed record Annex(string Number, string Title, string Kind, string Link);
+/// <summary>
+/// 법령 본문에 포함된 별표. 법령 별표는 <see cref="Content"/>에 표 텍스트가 들어오지만,
+/// 자치법규 별표는 HWP 첨부파일이라 비어 있고 <see cref="Link"/>만 쓸 수 있다.
+/// </summary>
+public sealed record Annex(string Number, string Title, string Kind, string Link, string Content = "");
 
 /// <summary>별표·서식 검색 결과 (보조 경로 — 본문의 Annexes를 우선 사용).</summary>
 public sealed record AnnexSummary(string LawName, string Name, string Number, string Kind, string Link);

@@ -82,6 +82,7 @@ public static class ApiEndpoints
                         farBasis = limits.FloorAreaBasis,
                         zone = limits.MatchedZone,
                     },
+                    parking = await ResolveParkingAsync(s, index.Province, index.City, dto.PrimaryUse),
                 });
             }
             catch (Exception ex)
@@ -223,6 +224,69 @@ public static class ApiEndpoints
         app.MapGet("/api/ping", () => Results.Ok(new { ok = true }));
     }
 
+    /// <summary>
+    /// 부설주차장 설치기준(시설면적 N㎡당 1대)을 주차장법 시행령 별표 1에서 가져오고,
+    /// 해당 지자체 주차장 조례의 별표 원문 링크를 함께 준다.
+    /// (조례 별표는 HWP 첨부라 값을 읽을 수 없어 사용자가 직접 확인해야 한다)
+    /// </summary>
+    private static async Task<object?> ResolveParkingAsync(
+        AppSettings s, string province, string city, string? primaryUse)
+    {
+        if (s.MolegApiKey.Length == 0 || string.IsNullOrWhiteSpace(primaryUse)) return null;
+
+        try
+        {
+            var moleg = new MolegClient(Http, s.MolegApiKey);
+            var hits = await moleg.SearchAsync("주차장법 시행령", LawTarget.Law);
+            var best = ReviewEngine.PickBestMatch(hits, "주차장법 시행령");
+            if (best is null) return null;
+
+            var decree = await moleg.GetLawTextAsync(best.SerialNo, LawTarget.Law);
+            var std = ParkingStandardResolver.Resolve(decree, primaryUse!);
+            if (std.AreaPerSpace is null) return null;
+
+            // 지자체 조례 별표(원문 링크만) — 실제 적용 기준은 이쪽이 우선한다.
+            var authority = Municipality.OrdinanceAuthority(province, city);
+            var ordinance = await FindParkingOrdinanceAsync(moleg, authority);
+
+            return new
+            {
+                areaPerSpace = std.AreaPerSpace,
+                basis = std.Basis,
+                matchedUse = std.MatchedUse,
+                note = std.Note,
+                ordinanceName = ordinance?.Name,
+                ordinanceAnnexLink = ordinance?.Link,
+            };
+        }
+        catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException or JsonException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// 지자체 주차장 조례를 찾는다. 이름이 지자체마다 달라("○○시 주차장 조례",
+    /// "○○시 주차장 설치 및 관리 조례") 검색 결과에서 골라야 한다.
+    /// </summary>
+    private static async Task<(string Name, string Link)?> FindParkingOrdinanceAsync(MolegClient moleg, string authority)
+    {
+        if (authority.Length == 0) return null;
+        var hits = await moleg.SearchAsync($"{authority} 주차장", LawTarget.Ordinance);
+
+        // 지자체명 바로 뒤가 "주차장"이어야 한다. 그러지 않으면 "대전광역시 대덕구 임산부 우대 및
+        // 전용주차장…" 같은 자치구·특수목적 조례가 잡힌다.
+        var prefix = authority + " 주차장";
+        var best = hits.FirstOrDefault(h => h.Name == $"{authority} 주차장 조례")
+                   ?? hits.FirstOrDefault(h => h.Name == $"{authority} 주차장 설치 및 관리 조례")
+                   ?? hits.FirstOrDefault(h => h.Name.StartsWith(prefix) && h.Name.EndsWith("조례"));
+        if (best is null) return null;
+
+        var text = await moleg.GetLawTextAsync(best.SerialNo, LawTarget.Ordinance);
+        var annex = text.Annexes?.FirstOrDefault();
+        return (best.Name, annex?.Link ?? "");
+    }
+
     /// <summary>검토 결과의 판정은 유지하고 프로젝트 정보만 최신 입력으로 바꾼다.</summary>
     private static ReviewResult CloneWithProject(ReviewResult src, ProjectInput project)
     {
@@ -264,7 +328,7 @@ public static class ApiEndpoints
 public sealed record SettingsDto(string? MolegApiKey, string? ClaudeApiKey, string? VworldApiKey,
     string? ClaudeModel, string? VworldDomain);
 
-public sealed record LookupDto(string? Address);
+public sealed record LookupDto(string? Address, string? PrimaryUse);
 
 public sealed record ReportRequest(ProjectInput? Project, string? Folder, string? FileName);
 
