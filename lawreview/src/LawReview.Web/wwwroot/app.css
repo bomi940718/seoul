@@ -97,6 +97,29 @@ table.area td.sub{color:var(--muted);font-size:11.5px;padding:7px 9px}
 .flag{display:flex;align-items:center;justify-content:center;gap:4px;padding:6px 4px;font-size:11.5px;color:var(--muted)}
 .flag input{margin:0}
 
+/* ── 결과 표 ── */
+td.empty{color:var(--muted);text-align:center;padding:22px}
+td.body-cell{padding:7px 9px;white-space:pre-wrap;line-height:1.6}
+.verdict{display:inline-block;padding:2px 8px;border-radius:10px;font-size:11.5px;font-weight:600}
+.v-적용{background:#e7f3ea;color:#1c6b34}
+.v-해당없음{background:#eef0f3;color:#5a6270}
+.v-확인필요{background:#fdf0e3;color:#9a5b12}
+td.center{text-align:center;vertical-align:middle;padding:7px 4px}
+.cite{margin:0 0 8px;padding-left:10px;border-left:2px solid var(--line-soft)}
+.cite:last-child{margin-bottom:0}
+.cite-head{font-weight:600;font-size:12px;margin-bottom:2px}
+.cite-body{white-space:pre-wrap;font-size:12px;line-height:1.6;color:#333}
+.detail-group{margin-bottom:18px}
+.detail-group h3{font-size:13.5px;margin:0 0 8px;padding-bottom:5px;border-bottom:1px solid var(--line)}
+
+/* ── 진행 표시 ── */
+.progress{height:8px;background:#eceff3;border-radius:5px;overflow:hidden;margin:6px 0 10px}
+.progress .bar{height:100%;width:0;background:var(--accent);transition:width .25s}
+.run-current{margin:0 0 8px;font-size:12.5px}
+.run-log{max-height:230px;overflow:auto;background:#f7f8fa;border:1px solid var(--line-soft);border-radius:5px;
+  padding:8px 10px;font-size:11.5px;line-height:1.55;margin:0;white-space:pre-wrap;font-family:Consolas,monospace}
+#dlgRun{width:560px}
+
 /* ── 상태바 ── */
 .statusbar{padding:6px 14px;background:var(--panel);border-top:1px solid var(--line);color:var(--muted);font-size:12px}
 

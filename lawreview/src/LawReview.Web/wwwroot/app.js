@@ -377,6 +377,156 @@ $("#tabs").addEventListener("click", (e) => {
   $("#page-" + b.dataset.page).classList.add("active");
 });
 
+// ── 검토 실행 ────────────────────────────────────────────────
+// 항목마다 조문 조회·AI 판정이 붙어 수 분 걸리므로 진행 상황을 보여준다.
+$("#btnRun").addEventListener("click", async () => {
+  const payload = buildProjectPayload();
+  if (!payload.siteArea) { status("대지면적을 먼저 입력하세요."); return; }
+
+  $("#runLog").textContent = "";
+  $("#runBar").style.width = "0%";
+  $("#runCurrent").textContent = "시작하는 중…";
+  $("#dlgRun").showModal();
+
+  const r = await fetch("/api/review/start", {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
+  });
+  const { jobId } = await r.json();
+  pollReview(jobId);
+});
+
+$("#btnRunClose").addEventListener("click", () => $("#dlgRun").close());
+
+async function pollReview(jobId) {
+  const tick = async () => {
+    const d = await (await fetch("/api/review/" + jobId)).json();
+    const done = (d.progress || []).filter((m) => m.startsWith("검토 중:")).length;
+    if (d.total) $("#runBar").style.width = Math.min(100, (done / d.total) * 100) + "%";
+    $("#runCurrent").textContent = d.progress?.length ? d.progress[d.progress.length - 1] : "…";
+    $("#runLog").textContent = (d.progress || []).slice(-40).join("\n");
+    $("#runLog").scrollTop = $("#runLog").scrollHeight;
+
+    if (!d.done) { setTimeout(tick, 900); return; }
+
+    if (d.error) {
+      $("#runCurrent").textContent = "실패: " + d.error;
+      status("검토 실패: " + d.error);
+      return;
+    }
+    $("#runBar").style.width = "100%";
+    renderResult(d.result);
+    state.result = d.result;
+    const c = d.result.counts;
+    $("#runCurrent").textContent = `완료 — 적용 ${c.적용} · 해당없음 ${c.해당없음} · 확인필요 ${c.확인필요}`;
+    status(`검토 완료 — ${c.total}항목 (적용 ${c.적용} / 해당없음 ${c.해당없음} / 확인필요 ${c.확인필요})`);
+    setTimeout(() => $("#dlgRun").close(), 1200);
+  };
+  tick();
+}
+
+function buildProjectPayload() {
+  const byBldg = new Map();
+  for (const f of state.floors) {
+    if (!num(f.excl) && !num(f.common)) continue;
+    const name = f.bldg || "동";
+    if (!byBldg.has(name)) byBldg.set(name, []);
+    byBldg.get(name).push({
+      floorLabel: f.floor, use: f.use,
+      exclusiveArea: num(f.excl), commonArea: num(f.common),
+      excludeFromGrossArea: !!f.exclude,
+    });
+  }
+  const zones = (state.project.useZones || "").split(",").map((s) => s.trim()).filter(Boolean);
+  return {
+    projectName: state.project.projectName,
+    client: state.project.client,
+    siteAddress: state.project.siteAddress,
+    province: state.project.province,
+    city: state.project.city,
+    useZones: zones,
+    siteArea: num(state.project.siteArea),
+    primaryUse: state.project.primaryUse,
+    allowedUse: state.project.allowedUse || null,
+    disallowedUse: state.project.disallowedUse || null,
+    plannedBuildingArea: buildingAreaInput(),
+    plannedFloorsAbove: parseInt(num(state.values.scale?.[planSlot()])) || 0,
+    zoning: {
+      maxCoverageRatio: num(state.values.coverage?.legal) || null,
+      maxFloorAreaRatio: num(state.values.floorRatio?.legal) || null,
+      landscapeRatio: landscapeRatioInput(),
+      source: state.values.coverage?.basis || "",
+    },
+    parking: {
+      areaPerSpace: num(state.values.parkingOut?.legal) || 200,
+      parkingType: state.values.parkingType?.[planSlot()] || "",
+      source: state.values.parkingType?.basis || "",
+    },
+    buildings: [...byBldg].map(([name, floors]) => ({ name, floors })),
+  };
+}
+
+// ── 결과 렌더 (검토서 p4~p7) ─────────────────────────────────
+function renderResult(res) {
+  // p4 검토법규
+  fill("#lawsBody", res.laws, (l) => `<tr><td class="body-cell">${esc(l.name)}</td>
+    <td class="center">${esc(l.effectiveDate)}</td><td></td></tr>`, 3);
+
+  // p5 요약 / p6 인증 — 같은 5열 구성
+  const sumRow = (x) => `<tr>
+    <td class="body-cell">${esc(x.title)}</td>
+    <td class="body-cell sub">${esc(x.basis)}</td>
+    <td class="body-cell">${esc(x.criterion)}</td>
+    <td class="body-cell">${esc(x.calculation || x.reason)}</td>
+    <td class="center"><span class="verdict v-${x.verdict}">${x.verdict}</span></td></tr>`;
+  fill("#summaryBody", res.summary, sumRow, 5);
+  fill("#certBody", res.cert, sumRow, 5);
+
+  // p6 지구단위계획 / p7 해당 지번 — 구분|항목|내용|적용여부
+  fill("#districtBody", res.district, detailRows, 4);
+  fill("#siteBody", res.site, detailRows, 4);
+
+  // 장별 상세
+  const host = $("#detailBody");
+  host.innerHTML = "";
+  for (const g of res.details || []) {
+    const div = document.createElement("div");
+    div.className = "detail-group";
+    div.innerHTML = `<h3>${esc(g.section)}</h3>` +
+      `<table class="doc"><thead><tr><th style="width:160px">항 목</th><th>내 용</th>
+       <th style="width:90px">적용여부</th></tr></thead><tbody>` +
+      g.items.map((x) => `<tr><td class="body-cell">${esc(x.title)}</td>
+        <td class="body-cell">${citeHtml(x)}</td>
+        <td class="center"><span class="verdict v-${x.verdict}">${x.verdict}</span></td></tr>`).join("") +
+      `</tbody></table>`;
+    host.appendChild(div);
+  }
+  $("#detailSheet").hidden = !(res.details && res.details.length);
+}
+
+const detailRows = (x) => `<tr>
+  <td class="body-cell">${esc(x.title)}</td>
+  <td class="body-cell sub">${x.citations.map((c) => esc(c.law + " " + c.article)).join("<br>")}</td>
+  <td class="body-cell">${citeHtml(x)}</td>
+  <td class="center"><span class="verdict v-${x.verdict}">${x.verdict}</span></td></tr>`;
+
+function citeHtml(x) {
+  const cites = (x.citations || []).map((c) => `<div class="cite">
+      <div class="cite-head">${esc(c.law)} ${esc(c.article)}${c.articleTitle ? "(" + esc(c.articleTitle) + ")" : ""}
+        ${c.effectiveDate ? `<span class="sub">[시행 ${esc(c.effectiveDate)}]</span>` : ""}</div>
+      <div class="cite-body">${esc(c.body)}</div></div>`).join("");
+  const reason = x.reason ? `<div class="cite-body" style="margin-top:6px"><b>판정 사유</b> — ${esc(x.reason)}</div>` : "";
+  return cites + reason;
+}
+
+function fill(sel, items, rowFn, cols) {
+  const el = $(sel);
+  el.innerHTML = items?.length
+    ? items.map(rowFn).join("")
+    : `<tr><td colspan="${cols}" class="empty">해당 항목이 없습니다.</td></tr>`;
+}
+
+const esc = (s) => String(s ?? "").replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+
 // ── 설정 ─────────────────────────────────────────────────────
 $("#btnSettings").addEventListener("click", async () => {
   const s = await (await fetch("/api/settings")).json();

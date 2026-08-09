@@ -114,6 +114,31 @@ public static class ApiEndpoints
             static object Row(string? planned, string? legal) => new { planned, legal };
         });
 
+        // ── 검토 실행 (백그라운드 + 진행상황 폴링) ────────────────────────
+        app.MapPost("/api/review/start", (ProjectInput project) =>
+        {
+            var job = ReviewJobs.Start(project);
+            return Results.Ok(new { jobId = job.Id });
+        });
+
+        app.MapGet("/api/review/{id}", (string id) =>
+        {
+            var job = ReviewJobs.Get(id);
+            if (job is null) return Results.NotFound(new { message = "검토 작업을 찾을 수 없습니다." });
+
+            string[] progress;
+            lock (job.Progress) progress = job.Progress.ToArray();
+
+            return Results.Ok(new
+            {
+                done = job.Done,
+                error = job.Error,
+                total = job.Total,
+                progress,
+                result = job.Result is null ? null : ReviewJobs.ToView(job.Result),
+            });
+        });
+
         app.MapGet("/api/ping", () => Results.Ok(new { ok = true }));
     }
 }
