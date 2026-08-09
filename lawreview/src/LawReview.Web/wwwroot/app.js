@@ -551,6 +551,85 @@ function fill(sel, items, rowFn, cols) {
 
 const esc = (s) => String(s ?? "").replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
 
+// ── 프로젝트 저장 / 불러오기 ─────────────────────────────────
+// 입력이 날아가지 않는 게 먼저다: 변경할 때마다 이 PC에 자동 저장하고,
+// 이름을 붙여 저장한 것은 언제든 다시 불러온다.
+const AUTOSAVE_KEY = "lawreview.autosave";
+
+function snapshot() {
+  return {
+    version: 1, savedAt: new Date().toISOString(),
+    mode: state.mode, project: state.project, values: state.values,
+    floors: state.floors, result: state.result || null,
+  };
+}
+
+function restore(s) {
+  if (!s) return;
+  state.mode = s.mode || "신축";
+  state.project = Object.assign(state.project, s.project || {});
+  state.values = s.values || {};
+  state.floors = s.floors || [];
+  state.result = s.result || null;
+  document.body.dataset.mode = state.mode;
+  $$(".mode").forEach((b) => b.classList.toggle("active", b.dataset.mode === state.mode));
+  renderScaleTable();
+  renderAreaTable();
+  bindHeadFields();
+  if (state.result) renderResult(state.result);
+}
+
+let autosaveTimer = null;
+function autosave() {
+  clearTimeout(autosaveTimer);
+  autosaveTimer = setTimeout(() => {
+    try { localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(snapshot())); } catch { /* 용량 초과 무시 */ }
+  }, 400);
+}
+document.addEventListener("input", autosave, true);
+document.addEventListener("change", autosave, true);
+
+$("#btnSave").addEventListener("click", async () => {
+  const suggested = state.project.projectName || "무제 프로젝트";
+  const name = prompt("저장할 이름을 입력하세요.", suggested);
+  if (!name) return;
+  const r = await fetch("/api/projects/" + encodeURIComponent(name), {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(snapshot()),
+  });
+  status(r.ok ? `저장됨 — ${name}` : "저장 실패");
+});
+
+$("#btnOpen").addEventListener("click", async () => {
+  const list = await (await fetch("/api/projects")).json();
+  const host = $("#projectList");
+  host.innerHTML = list.length
+    ? list.map((p) => `<div class="proj-row" data-name="${esc(p.name)}">
+        <div><div class="proj-name">${esc(p.name)}</div><div class="sub">${esc(p.savedAt)}</div></div>
+        <div><button class="btn sm proj-open">열기</button>
+             <button class="btn sm ghost proj-del">삭제</button></div></div>`).join("")
+    : `<p class="todo">저장된 프로젝트가 없습니다.</p>`;
+  $("#dlgOpen").showModal();
+});
+
+$("#btnOpenClose").addEventListener("click", () => $("#dlgOpen").close());
+
+$("#projectList").addEventListener("click", async (e) => {
+  const row = e.target.closest(".proj-row");
+  if (!row) return;
+  const name = row.dataset.name;
+  if (e.target.classList.contains("proj-open")) {
+    const s = await (await fetch("/api/projects/" + encodeURIComponent(name))).json();
+    restore(s);
+    $("#dlgOpen").close();
+    status(`불러옴 — ${name}`);
+  } else if (e.target.classList.contains("proj-del")) {
+    if (!confirm(`"${name}" 프로젝트를 삭제할까요?`)) return;
+    await fetch("/api/projects/" + encodeURIComponent(name), { method: "DELETE" });
+    row.remove();
+    status(`삭제됨 — ${name}`);
+  }
+});
+
 // ── 설정 ─────────────────────────────────────────────────────
 $("#btnSettings").addEventListener("click", async () => {
   const s = await (await fetch("/api/settings")).json();
@@ -579,4 +658,16 @@ document.body.dataset.mode = state.mode;
 renderScaleTable();
 renderAreaTable();
 bindHeadFields();
-status("준비됨 — 대지위치를 입력하고 자동조회를 누르세요");
+
+// 앱을 닫았다 열어도 직전 작업이 남아 있어야 한다.
+try {
+  const saved = localStorage.getItem(AUTOSAVE_KEY);
+  if (saved) {
+    restore(JSON.parse(saved));
+    status("직전 작업을 복원했습니다. (저장하려면 상단 '저장')");
+  } else {
+    status("준비됨 — 대지위치를 입력하고 자동조회를 누르세요");
+  }
+} catch {
+  status("준비됨 — 대지위치를 입력하고 자동조회를 누르세요");
+}

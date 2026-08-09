@@ -128,6 +128,15 @@ td.center{text-align:center;vertical-align:middle;padding:7px 4px}
   padding:8px 10px;font-size:11.5px;line-height:1.55;margin:0;white-space:pre-wrap;font-family:Consolas,monospace}
 #dlgRun{width:560px}
 
+/* ── 프로젝트 목록 ── */
+.proj-list{max-height:340px;overflow:auto;border:1px solid var(--line-soft);border-radius:6px}
+.proj-row{display:flex;align-items:center;justify-content:space-between;gap:10px;
+  padding:9px 12px;border-bottom:1px solid var(--line-soft)}
+.proj-row:last-child{border-bottom:0}
+.proj-row:hover{background:#fafbfd}
+.proj-name{font-weight:600}
+#dlgOpen{width:520px}
+
 /* ── 상태바 ── */
 .statusbar{padding:6px 14px;background:var(--panel);border-top:1px solid var(--line);color:var(--muted);font-size:12px}
 

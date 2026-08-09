@@ -1,3 +1,4 @@
+using System.Text.Json;
 using LawReview.Core;
 using LawReview.Core.LandUse;
 using LawReview.Core.Models;
@@ -139,6 +140,27 @@ public static class ApiEndpoints
                 result = job.Result is null ? null : ReviewJobs.ToView(job.Result),
             });
         });
+
+        // ── 프로젝트 저장/불러오기 ───────────────────────────────────────
+        app.MapGet("/api/projects", () => Results.Ok(ProjectStore.List()));
+
+        app.MapPost("/api/projects/{name}", (string name, JsonElement data) =>
+        {
+            try { ProjectStore.Save(name, data); return Results.Ok(new { saved = true }); }
+            catch (Exception ex) { return Results.BadRequest(new { message = ex.Message }); }
+        });
+
+        app.MapGet("/api/projects/{name}", (string name) =>
+        {
+            var json = ProjectStore.Load(name);
+            return json is null
+                ? Results.NotFound(new { message = "저장된 프로젝트가 없습니다." })
+                : Results.Content(json, "application/json");
+        });
+
+        app.MapDelete("/api/projects/{name}", (string name) =>
+            ProjectStore.Delete(name) ? Results.Ok(new { deleted = true })
+                                      : Results.NotFound(new { message = "없는 프로젝트입니다." }));
 
         app.MapGet("/api/ping", () => Results.Ok(new { ok = true }));
     }

@@ -17,6 +17,8 @@
     <button class="mode" data-mode="용도변경">용도변경</button>
   </nav>
   <div class="spacer"></div>
+  <button class="btn ghost" id="btnOpen">불러오기</button>
+  <button class="btn ghost" id="btnSave">저장</button>
   <button class="btn ghost" id="btnSettings">설정</button>
   <button class="btn" id="btnRun">검토 실행</button>
   <button class="btn ghost" id="btnReport">검토서 저장</button>
@@ -211,6 +213,15 @@
       <button value="save" id="btnSaveSettings" class="btn">저장</button>
     </menu>
   </form>
+</dialog>
+
+<!-- 프로젝트 불러오기 -->
+<dialog id="dlgOpen">
+  <div class="dlg">
+    <h3>프로젝트 불러오기</h3>
+    <div id="projectList" class="proj-list"></div>
+    <menu><button class="btn ghost" id="btnOpenClose">닫기</button></menu>
+  </div>
 </dialog>
 
 <script src="app.js"></script>
