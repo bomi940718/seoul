@@ -62,7 +62,7 @@ public static class ApiEndpoints
 
                 // 용도지역이 정해지면 법정 건폐율·용적률도 지자체 도시계획조례에서 바로 가져온다.
                 // (지구단위계획이 없어도 검토가 되어야 하므로 — 조례가 기본 기준)
-                var limits = await ResolveZoningLimitsAsync(s, index.Province, index.Zones);
+                var limits = await ResolveZoningLimitsAsync(s, index.Province, index.City, index.Zones);
 
                 return Results.Ok(new
                 {
@@ -237,7 +237,7 @@ public static class ApiEndpoints
     /// 법제처 키가 없거나 조회에 실패하면 조용히 빈 결과를 돌려준다(자동조회 자체는 살린다).
     /// </summary>
     private static async Task<ZoningLimitLookup> ResolveZoningLimitsAsync(
-        AppSettings s, string province, IReadOnlyList<string> zones)
+        AppSettings s, string province, string city, IReadOnlyList<string> zones)
     {
         if (s.MolegApiKey.Length == 0 || province.Length == 0 || zones.Count == 0)
             return new ZoningLimitLookup();
@@ -245,7 +245,8 @@ public static class ApiEndpoints
         try
         {
             var moleg = new MolegClient(Http, s.MolegApiKey);
-            var name = $"{province} 도시계획 조례";
+            // 도시계획조례를 제정하는 지자체를 골라야 한다(도 산하는 시·군이 제정).
+            var name = $"{Municipality.OrdinanceAuthority(province, city)} 도시계획 조례";
             var hits = await moleg.SearchAsync(name, LawTarget.Ordinance);
             var best = ReviewEngine.PickBestMatch(hits, name);
             if (best is null) return new ZoningLimitLookup();

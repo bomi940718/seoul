@@ -172,9 +172,14 @@ public sealed class ReviewEngine
         }
     }
 
-    /// <summary>"{시}" "{구}" 자리표시자를 프로젝트 지자체명으로 치환. 조례가 항상 해당 지자체 것만 조회되게 한다.</summary>
+    /// <summary>
+    /// "{시}" "{구}" 자리표시자를 프로젝트 지자체명으로 치환. 조례가 항상 해당 지자체 것만 조회되게 한다.
+    /// {시}는 **조례를 제정하는 지자체**로 바뀐다 — 광역시는 광역시가, 도 산하는 시·군이 제정하므로
+    /// 강원특별자치도 속초시라면 "속초시 건축 조례"가 된다 (Municipality 참고).
+    /// </summary>
     internal static string ResolvePlaceholders(string lawName, ProjectInput p) =>
-        lawName.Replace("{시}", p.Province).Replace("{구}", p.City);
+        lawName.Replace("{시}", Municipality.OrdinanceAuthority(p.Province, p.City))
+               .Replace("{구}", p.City);
 
     /// <summary>
     /// 별표는 내용이 파일(HWP 등)이므로 검토서에는 별표명 + 원문 링크로 인용한다.
