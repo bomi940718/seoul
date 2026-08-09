@@ -27,6 +27,11 @@ public sealed class ChecklistItem
     public string Title { get; set; } = "";            // 항목명 (예: 대지 안의 조경)
     public string Section { get; set; } = "";          // 검토서의 소속 섹션 (예: 제4장 건축물의 대지와 도로)
     public bool InSummary { get; set; }                // 요약 검토표 포함 여부
+    /// <summary>
+    /// 요약 검토표·인증 표에서의 표기 순서. 실무 표준 서식(HWP)의 순서를 그대로 따르며
+    /// 협력사와 공유하는 서식이므로 임의로 바꾸지 않는다. 값이 없으면 파일 순서를 쓴다.
+    /// </summary>
+    public int? Order { get; set; }
     [JsonConverter(typeof(JsonStringEnumConverter))]
     public JudgmentType Judgment { get; set; }
     public List<LawBasis> Basis { get; set; } = new(); // 근거 법령·조문 (우선순위 순서대로)

@@ -379,25 +379,30 @@ $("#tabs").addEventListener("click", (e) => {
 
 // ── 검토 실행 ────────────────────────────────────────────────
 // 항목마다 조문 조회·AI 판정이 붙어 수 분 걸리므로 진행 상황을 보여준다.
-$("#btnRun").addEventListener("click", async () => {
+$("#btnRun").addEventListener("click", () => runReview("basic"));
+$("#btnRunDetail").addEventListener("click", () => runReview("detail"));
+
+// stage=basic: 주요 법규까지(계약 전 단계) / detail: 장별 상세검토(필요할 때만)
+async function runReview(stage) {
   const payload = buildProjectPayload();
   if (!payload.siteArea) { status("대지면적을 먼저 입력하세요."); return; }
 
   $("#runLog").textContent = "";
   $("#runBar").style.width = "0%";
   $("#runCurrent").textContent = "시작하는 중…";
+  $("#dlgRun").querySelector("h3").textContent = stage === "detail" ? "장별 상세검토 실행 중" : "검토 실행 중";
   $("#dlgRun").showModal();
 
-  const r = await fetch("/api/review/start", {
+  const r = await fetch("/api/review/start?stage=" + stage, {
     method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
   });
   const { jobId } = await r.json();
-  pollReview(jobId);
-});
+  pollReview(jobId, stage);
+}
 
 $("#btnRunClose").addEventListener("click", () => $("#dlgRun").close());
 
-async function pollReview(jobId) {
+async function pollReview(jobId, stage = "basic") {
   const tick = async () => {
     const d = await (await fetch("/api/review/" + jobId)).json();
     const done = (d.progress || []).filter((m) => m.startsWith("검토 중:")).length;
@@ -414,7 +419,9 @@ async function pollReview(jobId) {
       return;
     }
     $("#runBar").style.width = "100%";
-    renderResult(d.result);
+    // 상세검토는 상세 탭만 갱신한다(기본 검토 결과를 지우지 않는다).
+    if (stage === "detail") renderDetails(d.result.details);
+    else renderResult(d.result);
     state.result = d.result;
     const c = d.result.counts;
     $("#runCurrent").textContent = `완료 — 적용 ${c.적용} · 해당없음 ${c.해당없음} · 확인필요 ${c.확인필요}`;
@@ -485,22 +492,39 @@ function renderResult(res) {
   fill("#districtBody", res.district, detailRows, 4);
   fill("#siteBody", res.site, detailRows, 4);
 
-  // 장별 상세
+  renderDetails(res.details);
+}
+
+/// 장별 상세검토 — 법령 하나가 한 행이 되도록 나눠서 어느 법을 적용했는지 바로 보이게 한다.
+/// (표준 서식도 구분 → 항목(법령 조문) → 내용 순으로 행을 나눈다)
+function renderDetails(details) {
   const host = $("#detailBody");
   host.innerHTML = "";
-  for (const g of res.details || []) {
+  if (!details || !details.length) {
+    host.innerHTML = `<p class="todo">상세검토를 실행하면 제4~7장 등 장별 조문 검토가 표시됩니다.</p>`;
+    return;
+  }
+  for (const g of details) {
     const div = document.createElement("div");
     div.className = "detail-group";
+    const rows = g.items.map((x) => {
+      const cites = x.citations?.length ? x.citations : [null];
+      return cites.map((c, i) => `<tr class="${i === 0 ? "item-start" : "cite-row"}">
+        ${i === 0 ? `<td class="body-cell item-name" rowspan="${cites.length}">${esc(x.title)}</td>` : ""}
+        <td class="body-cell law-name">${c ? esc(c.law) + " " + esc(c.article) : "-"}
+          ${c?.effectiveDate ? `<div class="sub">[시행 ${esc(c.effectiveDate)}]</div>` : ""}</td>
+        <td class="body-cell">${c ? esc(c.body) : esc(x.reason || "")}</td>
+        ${i === 0 ? `<td class="center" rowspan="${cites.length}">
+            <span class="verdict v-${x.verdict}">${x.verdict}</span>
+            ${x.reason ? `<div class="sub reason">${esc(x.reason)}</div>` : ""}</td>` : ""}
+      </tr>`).join("");
+    }).join("");
     div.innerHTML = `<h3>${esc(g.section)}</h3>` +
-      `<table class="doc"><thead><tr><th style="width:160px">항 목</th><th>내 용</th>
-       <th style="width:90px">적용여부</th></tr></thead><tbody>` +
-      g.items.map((x) => `<tr><td class="body-cell">${esc(x.title)}</td>
-        <td class="body-cell">${citeHtml(x)}</td>
-        <td class="center"><span class="verdict v-${x.verdict}">${x.verdict}</span></td></tr>`).join("") +
-      `</tbody></table>`;
+      `<table class="doc detail"><thead><tr>
+         <th style="width:150px">구 분</th><th style="width:210px">항 목</th>
+         <th>내 용</th><th style="width:150px">적용여부</th></tr></thead><tbody>${rows}</tbody></table>`;
     host.appendChild(div);
   }
-  $("#detailSheet").hidden = !(res.details && res.details.length);
 }
 
 const detailRows = (x) => `<tr>

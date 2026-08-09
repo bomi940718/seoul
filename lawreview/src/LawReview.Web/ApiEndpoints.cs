@@ -115,9 +115,10 @@ public static class ApiEndpoints
         });
 
         // ── 검토 실행 (백그라운드 + 진행상황 폴링) ────────────────────────
-        app.MapPost("/api/review/start", (ProjectInput project) =>
+        // stage=basic(기본, 주요 법규까지) | detail(장별 상세) | all
+        app.MapPost("/api/review/start", (ProjectInput project, string? stage) =>
         {
-            var job = ReviewJobs.Start(project);
+            var job = ReviewJobs.Start(project, stage ?? "basic");
             return Results.Ok(new { jobId = job.Id });
         });
 

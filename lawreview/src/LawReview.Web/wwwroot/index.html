@@ -29,6 +29,7 @@
   <button class="tab" data-page="cert">인증 의무</button>
   <button class="tab" data-page="district">지구단위계획 지침</button>
   <button class="tab" data-page="site">해당 지번 주요 법규</button>
+  <button class="tab" data-page="detail">장별 상세검토</button>
 </nav>
 
 <main id="main">
@@ -164,9 +165,18 @@
         <th style="width:160px">구 분</th><th style="width:220px">항 목</th><th>내 용</th><th style="width:90px">적용여부</th>
       </tr></thead><tbody id="siteBody"><tr><td colspan="4" class="empty">검토를 실행하세요.</td></tr></tbody></table>
     </div>
-    <div class="sheet" id="detailSheet" hidden>
-      <h2 class="sheet-title">■ 장별 상세검토</h2>
-      <div id="detailBody"></div>
+  </section>
+
+  <section class="page" id="page-detail">
+    <div class="sheet">
+      <div class="sheet-head">
+        <h2 class="sheet-title">■ 장별 상세검토</h2>
+        <div class="sheet-tools">
+          <span class="hint-inline">계약 전에는 주요 법규까지만 검토합니다. 필요할 때만 실행하세요.</span>
+          <button class="btn sm" id="btnRunDetail">상세검토 실행</button>
+        </div>
+      </div>
+      <div id="detailBody"><p class="todo">상세검토를 실행하면 제4~7장 등 장별 조문 검토가 표시됩니다.</p></div>
     </div>
   </section>
 </main>

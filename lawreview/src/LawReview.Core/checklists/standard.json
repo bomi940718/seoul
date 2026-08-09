@@ -5,6 +5,7 @@
     "id": "coverage_ratio",
     "title": "건폐율",
     "section": "요약",
+    "order": 1,
     "inSummary": true,
     "judgment": "Quantitative",
     "basis": [
@@ -16,6 +17,7 @@
     "id": "floor_area_ratio",
     "title": "용적률",
     "section": "요약",
+    "order": 2,
     "inSummary": true,
     "judgment": "Quantitative",
     "basis": [
@@ -27,6 +29,7 @@
     "id": "parking",
     "title": "부설주차장",
     "section": "요약",
+    "order": 9,
     "inSummary": true,
     "judgment": "Quantitative",
     "basis": [
@@ -39,6 +42,7 @@
     "id": "sunlight_height",
     "title": "건축물의 높이 (일조 등의 확보)",
     "section": "요약",
+    "order": 3,
     "inSummary": true,
     "judgment": "Ai",
     "legalCriterion": "전용주거·일반주거지역에서 정북방향 이격",
@@ -51,6 +55,7 @@
     "id": "street_height_limit",
     "title": "가로구역별 건축물 높이제한",
     "section": "요약",
+    "order": 4,
     "inSummary": true,
     "judgment": "Ai",
     "basis": [
@@ -61,7 +66,7 @@
     "id": "deliberation",
     "title": "건축위원회 심의 대상 여부",
     "section": "해당 지번 관련 주요 법규",
-    "inSummary": true,
+    "inSummary": false,
     "judgment": "Ai",
     "basis": [
       { "lawName": "{시} 건축 조례", "articleTitleKeyword": "심의", "target": "Ordinance" }
@@ -91,6 +96,7 @@
     "id": "landscaping",
     "title": "대지 안의 조경",
     "section": "제4장 건축물의 대지와 도로",
+    "order": 8,
     "inSummary": true,
     "judgment": "Ai",
     "legalCriterion": "면적 200㎡ 이상 대지 조경 의무 (면제 규정 확인)",
@@ -104,6 +110,7 @@
     "id": "open_space",
     "title": "공개 공지 등의 확보",
     "section": "제4장 건축물의 대지와 도로",
+    "order": 7,
     "inSummary": true,
     "judgment": "Ai",
     "legalCriterion": "다중이용시설 바닥면적 합계 5,000㎡ 이상",
@@ -340,9 +347,24 @@
 
   // ═══ 제6장 지역 및 지구의 건축물 ══════════════════════════════
   {
+    // 지구단위계획의 건축한계선·건축지정선. 지단이 없으면 "해당 없음"으로 남는다.
+    "id": "building_line",
+    "title": "건축선 계획",
+    "section": "제6장 지역 및 지구의 건축물",
+    "order": 5,
+    "inSummary": true,
+    "judgment": "Ai",
+    "legalCriterion": "건축한계선·건축지정선 (지구단위계획 지침)",
+    "basis": [
+      { "lawName": "건축법", "article": "46", "target": "Law" },
+      { "lawName": "건축법", "article": "47", "target": "Law" }
+    ]
+  },
+  {
     "id": "setback",
     "title": "대지 안의 공지",
     "section": "제6장 지역 및 지구의 건축물",
+    "order": 6,
     "inSummary": true,
     "judgment": "Ai",
     "legalCriterion": "건축선·인접대지경계선 이격 (건축조례 별표)",
@@ -440,6 +462,7 @@
     "id": "energy_plan",
     "title": "에너지 절약계획서 제출",
     "section": "녹색건축물 조성 지원법",
+    "order": 10,
     "inSummary": true,
     "judgment": "Ai",
     "legalCriterion": "연면적 500㎡ 이상 건축물",
@@ -465,6 +488,7 @@
     "id": "renewable_energy",
     "title": "신·재생에너지 설비 설치 의무",
     "section": "각종 인증 의무 대상 여부",
+    "order": 1,
     "judgment": "Ai",
     "legalCriterion": "공공기관 신·증축 연면적 1,000㎡ 이상",
     "basis": [
@@ -474,19 +498,45 @@
   },
   {
     "id": "energy_efficiency_cert",
-    "title": "건축물 에너지효율등급·제로에너지건축물 인증",
+    "title": "건축물 에너지효율",
     "section": "각종 인증 의무 대상 여부",
+    "order": 2,
     "judgment": "Ai",
-    "legalCriterion": "신축·별동 증축 연면적 1,000㎡ 이상 (의무 대상 기관 확인)",
+    "legalCriterion": "신축·별동 증축 연면적 1,000㎡ 이상 (1등급 이상)",
     "basis": [
       { "lawName": "녹색건축물 조성 지원법", "article": "17", "target": "Law" },
       { "lawName": "녹색건축물 조성 지원법 시행령", "article": "12", "target": "Law" }
     ]
   },
   {
+    "id": "zero_energy_cert",
+    "title": "제로에너지건축물",
+    "section": "각종 인증 의무 대상 여부",
+    "order": 4,
+    "judgment": "Ai",
+    "legalCriterion": "신축·별동 증축 연면적 1,000㎡ 이상의 에너지절약계획서 제출 대상",
+    "basis": [
+      { "lawName": "녹색건축물 조성 지원법", "article": "17", "target": "Law" },
+      { "lawName": "녹색건축물 조성 지원법 시행령", "article": "12", "target": "Law", "annex": "별표 1" }
+    ]
+  },
+  {
+    "id": "bems",
+    "title": "건물에너지관리시스템(BEMS)",
+    "section": "각종 인증 의무 대상 여부",
+    "order": 5,
+    "judgment": "Ai",
+    "legalCriterion": "공공기관 신축·별동 증축 연면적 1,000㎡ 이상",
+    "note": "공공기관 에너지이용 합리화 추진에 관한 규정 제6조 — 법제처 조회 대상이 아니면 직접 확인",
+    "basis": [
+      { "lawName": "녹색건축물 조성 지원법", "article": "6의2", "target": "Law" }
+    ]
+  },
+  {
     "id": "green_building_cert",
     "title": "녹색건축 인증",
     "section": "각종 인증 의무 대상 여부",
+    "order": 3,
     "judgment": "Ai",
     "legalCriterion": "공공기관 연면적 3,000㎡ 이상",
     "basis": [
@@ -497,6 +547,7 @@
     "id": "bf_cert",
     "title": "장애물 없는 생활환경(BF) 인증",
     "section": "각종 인증 의무 대상 여부",
+    "order": 6,
     "judgment": "Ai",
     "legalCriterion": "국가·지자체가 신축하는 공공시설 인증 의무",
     "basis": [
