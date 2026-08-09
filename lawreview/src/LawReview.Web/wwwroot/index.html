@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>법규검토서 생성기</title>
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">법규검토서 생성기</div>
+  <nav class="modes" id="modes">
+    <button class="mode active" data-mode="신축">신축</button>
+    <button class="mode" data-mode="리모델링">리모델링</button>
+    <button class="mode" data-mode="증축">증축</button>
+    <button class="mode" data-mode="용도변경">용도변경</button>
+  </nav>
+  <div class="spacer"></div>
+  <button class="btn ghost" id="btnSettings">설정</button>
+  <button class="btn" id="btnReport">검토서 저장</button>
+</header>
+
+<nav class="tabs" id="tabs">
+  <button class="tab active" data-page="overview">설계개요</button>
+  <button class="tab" data-page="laws">검토법규</button>
+  <button class="tab" data-page="summary">요약 검토서</button>
+  <button class="tab" data-page="cert">인증 의무</button>
+  <button class="tab" data-page="district">지구단위계획 지침</button>
+  <button class="tab" data-page="site">해당 지번 주요 법규</button>
+</nav>
+
+<main id="main">
+
+  <!-- ─────────── 설계개요 (검토서 p3) ─────────── -->
+  <section class="page active" id="page-overview">
+    <div class="sheet">
+      <h2 class="sheet-title">■ 설계개요</h2>
+
+      <table class="doc head">
+        <tbody>
+          <tr><th>사 업 명</th><td colspan="3"><div class="cell" data-field="projectName" contenteditable="true"></div></td></tr>
+          <tr><th>건 축 주</th><td colspan="3"><div class="cell" data-field="client" contenteditable="true"></div></td></tr>
+          <tr>
+            <th>대 지 위 치</th>
+            <td colspan="2"><div class="cell" data-field="siteAddress" contenteditable="true"></div></td>
+            <td class="act"><button class="btn sm" id="btnLookup">자동조회</button></td>
+          </tr>
+          <tr><th>지 역 / 지 구</th><td colspan="3"><div class="cell multi" data-field="useZones" contenteditable="true"></div></td></tr>
+          <tr>
+            <th>대 지 면 적<span class="unit">(m²)</span></th>
+            <td class="w-narrow"><div class="cell" data-field="landCategory" contenteditable="true" data-ph="지목"></div></td>
+            <td colspan="2"><div class="cell num" data-field="siteArea" contenteditable="true" data-ph="0.00"></div></td>
+          </tr>
+          <tr><th>용 도</th><td colspan="3"><div class="cell" data-field="primaryUse" contenteditable="true"></div></td></tr>
+          <tr class="opt-district">
+            <th>허 용 용 도</th>
+            <td colspan="2"><div class="cell multi" data-field="allowedUse" contenteditable="true"></div></td>
+            <td><div class="cell basis" data-field="allowedUseBasis" contenteditable="true" data-ph="근거"></div></td>
+          </tr>
+          <tr class="opt-district">
+            <th>불 허 용 도</th>
+            <td colspan="2"><div class="cell multi" data-field="disallowedUse" contenteditable="true"></div></td>
+            <td><div class="cell basis" data-field="disallowedUseBasis" contenteditable="true" data-ph="근거"></div></td>
+          </tr>
+        </tbody>
+      </table>
+
+      <table class="doc scale" id="scaleTable">
+        <thead>
+          <tr>
+            <th class="w-item">구 분</th>
+            <th class="col-before">변경전</th>
+            <th class="col-plan">계획</th>
+            <th class="col-after">변경후</th>
+            <th class="col-legal">법정</th>
+            <th class="w-basis">법 규</th>
+          </tr>
+        </thead>
+        <tbody id="scaleBody"><!-- app.js가 채운다 --></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="page" id="page-laws"><div class="sheet"><h2 class="sheet-title">■ 검토법규</h2><p class="todo">다음 단계에서 연결합니다.</p></div></section>
+  <section class="page" id="page-summary"><div class="sheet"><h2 class="sheet-title">■ 관련 주요 법규 검토서(요약)</h2><p class="todo">다음 단계에서 연결합니다.</p></div></section>
+  <section class="page" id="page-cert"><div class="sheet"><h2 class="sheet-title">■ 각종 인증 의무 대상 여부</h2><p class="todo">다음 단계에서 연결합니다.</p></div></section>
+  <section class="page" id="page-district"><div class="sheet"><h2 class="sheet-title">■ 건축허가 관련 지구단위계획 지침</h2><p class="todo">다음 단계에서 연결합니다.</p></div></section>
+  <section class="page" id="page-site"><div class="sheet"><h2 class="sheet-title">■ 해당 지번 관련 주요 법규</h2><p class="todo">다음 단계에서 연결합니다.</p></div></section>
+</main>
+
+<footer class="statusbar"><span id="status">준비됨</span></footer>
+
+<!-- 설정 -->
+<dialog id="dlgSettings">
+  <form method="dialog" class="dlg">
+    <h3>설정</h3>
+    <label>법제처 Open API 키 (OC) <input type="password" id="setMoleg" placeholder="미입력"></label>
+    <p class="hint">open.law.go.kr 무료 발급. 조문 원문 조회에 사용.</p>
+    <label>Claude API 키 <input type="password" id="setClaude" placeholder="미입력"></label>
+    <p class="hint">없으면 AI 판정 항목이 "확인필요"로 표시됩니다.</p>
+    <label>Claude 모델 <input type="text" id="setModel"></label>
+    <label>VWorld 키 <input type="password" id="setVworld" placeholder="미입력"></label>
+    <p class="hint">주소 자동조회에 사용. 없으면 직접 입력.</p>
+    <label>VWorld 서비스 URL <input type="text" id="setVworldDomain"></label>
+    <menu>
+      <button value="cancel" class="btn ghost">닫기</button>
+      <button value="save" id="btnSaveSettings" class="btn">저장</button>
+    </menu>
+  </form>
+</dialog>
+
+<script src="app.js"></script>
+</body>
+</html>

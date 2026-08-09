@@ -1,0 +1,94 @@
+/* 검토서와 같은 표를 보되, 편집이 셀에 갇히지 않도록 하는 것이 이 화면의 1순위.
+   → 셀은 고정 높이가 없고(내용만큼 늘어남), 포커스되면 넓어지며 테두리가 살아난다. */
+
+:root{
+  --bg:#f4f5f7; --panel:#fff; --line:#c9ced6; --line-soft:#e4e7ec;
+  --ink:#1c1f24; --muted:#6b7280; --accent:#1c5fd6; --accent-soft:#e8f0fe;
+  --num:#c0392b;      /* 숫자 입력 = 빨강 (실무 서식 규약) */
+  --text-in:#0b4da2;  /* 문자 입력 = 파랑 */
+  --font:"Malgun Gothic","맑은 고딕",system-ui,sans-serif;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{font-family:var(--font);font-size:13px;color:var(--ink);background:var(--bg);display:flex;flex-direction:column}
+
+/* ── 상단 ── */
+.topbar{display:flex;align-items:center;gap:12px;padding:8px 14px;background:var(--panel);border-bottom:1px solid var(--line)}
+.brand{font-weight:700;font-size:14px;letter-spacing:-.3px}
+.spacer{flex:1}
+.modes{display:flex;gap:2px;background:#eceff3;padding:2px;border-radius:8px}
+.mode{border:0;background:transparent;padding:6px 14px;border-radius:6px;cursor:pointer;font-family:inherit;font-size:13px;color:var(--muted)}
+.mode.active{background:var(--panel);color:var(--ink);font-weight:600;box-shadow:0 1px 3px rgba(0,0,0,.12)}
+
+.btn{border:1px solid var(--accent);background:var(--accent);color:#fff;padding:6px 14px;border-radius:6px;cursor:pointer;font-family:inherit;font-size:13px}
+.btn:hover{filter:brightness(1.08)}
+.btn.ghost{background:transparent;color:var(--accent)}
+.btn.sm{padding:3px 10px;font-size:12px}
+
+/* ── 탭 ── */
+.tabs{display:flex;gap:0;background:var(--panel);border-bottom:1px solid var(--line);padding:0 10px;overflow-x:auto}
+.tab{border:0;border-bottom:2px solid transparent;background:transparent;padding:9px 14px;cursor:pointer;font-family:inherit;font-size:13px;color:var(--muted);white-space:nowrap}
+.tab.active{color:var(--accent);border-bottom-color:var(--accent);font-weight:600}
+
+/* ── 본문 ── */
+main{flex:1;overflow:auto;padding:18px}
+.page{display:none}
+.page.active{display:block}
+.sheet{max-width:1180px;margin:0 auto;background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:20px 22px 26px}
+.sheet-title{font-size:15px;margin:0 0 12px;font-weight:700}
+.todo{color:var(--muted)}
+
+/* ── 문서 표 ── */
+table.doc{width:100%;border-collapse:collapse;margin-bottom:16px;table-layout:fixed}
+table.doc th,table.doc td{border:1px solid var(--line);padding:0;vertical-align:top}
+table.doc th{background:#f7f8fa;font-weight:600;text-align:center;padding:7px 6px;font-size:12.5px;letter-spacing:-.2px;vertical-align:middle}
+table.doc thead th{background:#eef1f5}
+.unit{font-weight:400;color:var(--muted);font-size:11px}
+.w-item{width:130px}
+.w-basis{width:190px}
+.w-narrow{width:110px}
+td.act{width:96px;text-align:center;vertical-align:middle;padding:4px}
+
+/* 편집 셀 — 표에 갇히지 않는 편집이 핵심 */
+.cell{
+  min-height:30px;padding:7px 9px;outline:0;white-space:pre-wrap;word-break:break-word;
+  color:var(--text-in);cursor:text;line-height:1.55;transition:background .12s;
+}
+.cell:hover{background:#fafbfd}
+.cell:focus{background:var(--accent-soft);box-shadow:inset 0 0 0 2px var(--accent);border-radius:3px;position:relative;z-index:2}
+.cell:empty::before{content:attr(data-ph);color:#b3b9c4}
+.cell.num{color:var(--num);text-align:right;font-variant-numeric:tabular-nums}
+.cell.basis{color:var(--muted);font-size:12px}
+.cell.multi{min-height:52px}
+.cell.calc{color:var(--ink);background:#fbfbfc;cursor:default}
+.cell.calc:hover{background:#fbfbfc}
+
+/* 산정식은 여러 줄로 나오므로 줄바꿈 유지 */
+.formula{white-space:pre-wrap;line-height:1.6}
+.sub{color:var(--muted);font-size:11.5px}
+
+/* 주차 등 하위 항목 */
+tr.sub-row th{background:#fcfcfd;font-weight:500;font-size:12px;color:#444;padding-left:16px;text-align:left}
+
+/* 모드별 열 표시 (신축=계획/법정, 그 외=변경전/변경후/법정) */
+body[data-mode="신축"] .col-before,body[data-mode="신축"] .col-after{display:none}
+body:not([data-mode="신축"]) .col-plan{display:none}
+
+/* ── 상태바 ── */
+.statusbar{padding:6px 14px;background:var(--panel);border-top:1px solid var(--line);color:var(--muted);font-size:12px}
+
+/* ── 설정 ── */
+dialog{border:1px solid var(--line);border-radius:8px;padding:0;width:440px}
+dialog::backdrop{background:rgba(0,0,0,.35)}
+.dlg{padding:18px 20px}
+.dlg h3{margin:0 0 14px;font-size:15px}
+.dlg label{display:block;margin-bottom:4px;font-size:12.5px}
+.dlg input{width:100%;padding:7px 9px;margin-top:4px;border:1px solid var(--line);border-radius:5px;font-family:inherit;font-size:13px}
+.dlg .hint{margin:2px 0 12px;color:var(--muted);font-size:11.5px}
+.dlg menu{display:flex;justify-content:flex-end;gap:8px;padding:0;margin:16px 0 0}
+
+@media print{
+  .topbar,.tabs,.statusbar,td.act{display:none}
+  .page{display:block!important}
+  .sheet{border:0;max-width:none}
+}

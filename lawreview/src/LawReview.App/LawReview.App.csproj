@@ -29,6 +29,12 @@
 
   <ItemGroup>
     <ProjectReference Include="..\LawReview.Core\LawReview.Core.csproj" />
+    <ProjectReference Include="..\LawReview.Web\LawReview.Web.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- 화면을 창 안에 띄우는 컨트롤. 런타임이 없는 PC에서는 브라우저로 폴백한다(ShellForm). -->
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2903.40" />
   </ItemGroup>
 
 </Project>
