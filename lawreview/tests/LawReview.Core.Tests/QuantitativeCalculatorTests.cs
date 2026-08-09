@@ -101,4 +101,69 @@ public class QuantitativeCalculatorTests
         var o = QuantitativeCalculator.Calculate(p);
         Assert.False(o.CoverageCompliant);
     }
+
+    [Fact]
+    public void 확장형_친환경은_50대_미만이면_대상_아님을_표기한다()
+    {
+        // 실무 표준 서식의 표기: 계획 12대 → "주차대수 50대 이상 해당"
+        var o = QuantitativeCalculator.Calculate(DungokProject());
+        Assert.Null(o.Parking.ExpandedSpaces);
+        Assert.Null(o.Parking.EcoSpaces);
+        Assert.Equal("주차대수 50대 이상 해당", o.Parking.ExpandedFormula);
+        Assert.Equal("주차대수 50대 이상 해당", o.Parking.EcoFormula);
+    }
+
+    [Fact]
+    public void 법정_연면적_기준_주차는_확장형_친환경까지_산정한다()
+    {
+        // 법정 열은 법정 연면적(21,105.35)으로 계산 → 105.53 → 106대,
+        // 106 x 3% = 3.18 → 3대 (장애인·확장형·친환경 동일)
+        var o = QuantitativeCalculator.Calculate(DungokProject());
+        var legal = o.ParkingAtLegalMax;
+        Assert.NotNull(legal);
+        Assert.Equal(106, legal!.TotalSpaces);
+        Assert.Equal(3, legal.DisabledSpaces);
+        Assert.Equal(3, legal.ExpandedSpaces);
+        Assert.Equal(3, legal.EcoSpaces);
+        Assert.Contains("3.18", legal.EcoFormula);
+        // 법정 열의 전체 표기는 "이상"이 붙는다
+        Assert.Equal("106 대 이상 (장애인 포함)", legal.TotalDisplay);
+    }
+
+    [Fact]
+    public void 전체_주차_표기는_장애인_대상_여부를_반영한다()
+    {
+        var o = QuantitativeCalculator.Calculate(DungokProject());
+        Assert.Equal("12 대 (장애인 포함)", o.Parking.TotalDisplay);   // 10대 이상이므로 포함 문구
+
+        var small = DungokProject();
+        small.Buildings.Clear();
+        small.Buildings.Add(new BuildingArea
+        {
+            Name = "소규모",
+            Floors = { new FloorArea { FloorLabel = "1층", Use = "공장", ExclusiveArea = 500 } },
+        });
+        var o2 = QuantitativeCalculator.Calculate(small);
+        Assert.Equal(3, o2.Parking.TotalSpaces);        // 500/200 = 2.5 → 0.5 이상이므로 올림
+        Assert.Equal("3 대", o2.Parking.TotalDisplay);  // 10대 미만이라 "(장애인 포함)" 없음
+    }
+
+    [Fact]
+    public void 조경면적은_대지면적_비율로_산정된다()
+    {
+        var p = DungokProject();
+        p.Zoning.LandscapeRatio = 0.05;      // 건축법 시행령 제27조 (5%)
+        var o = QuantitativeCalculator.Calculate(p);
+        Assert.True(Math.Abs(o.RequiredLandscapeArea!.Value - 301.505) < 0.001);
+        Assert.Equal("301.51 m² 이상", o.LandscapeFormula);   // 표기는 소수 둘째 자리
+    }
+
+    [Fact]
+    public void 건축면적_연면적_산정식이_표준_표기를_따른다()
+    {
+        // 실무 표준: "6,030.10 x 0.241 = 1,453.22 m²" / "6,030.10 x 0.412 = 2,484.43 m²"
+        var o = QuantitativeCalculator.Calculate(DungokProject());
+        Assert.Equal("6,030.10 x 0.241 = 1,453.22 m²", o.BuildingAreaFormula);
+        Assert.Equal("6,030.10 x 0.412 = 2,484.43 m²", o.GrossAreaFormula);
+    }
 }

@@ -92,6 +92,7 @@ public sealed class ZoningLimits
     public double? MaxFloorAreaRatio { get; set; }     // 법정 용적률 상한 (%)
     public int? MaxFloors { get; set; }                // 층수 제한
     public double? MaxHeight { get; set; }             // 높이 제한 (m)
+    public double? LandscapeRatio { get; set; }        // 법정 조경면적 비율 (예: 0.05 = 대지면적의 5%)
     public string Source { get; set; } = "";           // 근거 (예: 국제과학비즈니스벨트 거점지구단위계획)
 }
 
@@ -103,5 +104,8 @@ public sealed class ParkingRule
     public int DisabledMinTotal { get; set; } = 10;    // 장애인전용 의무 발생 최소 주차대수
     public int ExpandedMinTotal { get; set; } = 50;    // 확장형 의무 발생 최소 주차대수
     public double ExpandedRatio { get; set; } = 0.03;
+    public int EcoMinTotal { get; set; } = 50;         // 친환경(환경친화적 자동차) 의무 발생 최소 주차대수
+    public double EcoRatio { get; set; } = 0.03;
+    public string ParkingType { get; set; } = "";      // 주차형식 (예: 자주식) — 설계개요 표 첫 행
     public string Source { get; set; } = "";           // 근거 (예: 대전광역시 주차장 조례 제16조)
 }

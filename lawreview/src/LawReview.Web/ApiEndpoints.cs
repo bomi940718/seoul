@@ -75,40 +75,43 @@ public static class ApiEndpoints
             }
         });
 
-        // ── 설계개요 계산 (검토서 p3 표기 문자열까지 생성) ────────────────
+        // ── 설계개요 계산 ────────────────────────────────────────────────
+        // 화면의 표 행(구분)에 그대로 대응하는 문자열을 돌려준다.
+        // 표기 형식은 실무 표준 서식(HWP)을 따르며, 계산은 전부 엔진이 한다.
         app.MapPost("/api/overview", (ProjectInput project) =>
         {
             var o = QuantitativeCalculator.Calculate(project);
+            var legalParking = o.ParkingAtLegalMax;
+
             return Results.Ok(new
             {
-                coverage = new
+                grossFloorArea = o.GrossFloorArea,
+                rows = new Dictionary<string, object?>
                 {
-                    planned = o.CoverageFormula,
-                    ratio = o.CoverageRatio,
-                    legal = o.MaxBuildingAreaFormula,
-                    legalArea = o.MaxBuildingArea,
-                    compliant = o.CoverageCompliant,
+                    ["buildingArea"] = Row(o.BuildingAreaFormula, o.MaxBuildingAreaFormula is { } f
+                        ? $"{f} 이하" : null),
+                    ["coverage"] = Row(o.CoverageFormula,
+                        project.Zoning.MaxCoverageRatio is double c ? $"{c:0.00} % 이하" : null),
+                    ["grossArea"] = Row(o.GrossAreaFormula, o.MaxGrossFloorAreaFormula is { } g
+                        ? $"{g} 이하" : null),
+                    ["floorRatio"] = Row(o.FloorAreaRatioFormula,
+                        project.Zoning.MaxFloorAreaRatio is double r ? $"{r:0.00} % 이하" : null),
+                    ["landscape"] = Row(null, o.LandscapeFormula),
+                    ["parkingOut"] = Row(o.Parking.TotalFormula, legalParking?.TotalFormula),
+                    ["parkingDis"] = Row(o.Parking.DisabledFormula, legalParking?.DisabledFormula),
+                    ["parkingExt"] = Row(o.Parking.ExpandedFormula, legalParking?.ExpandedFormula),
+                    ["parkingEco"] = Row(o.Parking.EcoFormula, legalParking?.EcoFormula),
+                    ["parkingAll"] = Row(o.Parking.TotalDisplay, legalParking?.TotalDisplay),
                 },
-                floorArea = new
+                compliance = new
                 {
-                    gross = o.GrossFloorArea,
-                    planned = o.FloorAreaRatioFormula,
-                    ratio = o.FloorAreaRatio,
-                    legal = o.MaxGrossFloorAreaFormula,
-                    legalArea = o.MaxGrossFloorArea,
-                    compliant = o.FloorAreaCompliant,
-                },
-                parking = new
-                {
-                    planned = new { total = o.Parking.TotalSpaces, formula = o.Parking.TotalFormula, disabled = o.Parking.DisabledFormula },
-                    legal = o.ParkingAtLegalMax is null ? null : new
-                    {
-                        total = o.ParkingAtLegalMax.TotalSpaces,
-                        formula = o.ParkingAtLegalMax.TotalFormula,
-                        disabled = o.ParkingAtLegalMax.DisabledFormula,
-                    },
+                    coverage = o.CoverageCompliant,
+                    floorArea = o.FloorAreaCompliant,
+                    floors = o.FloorsCompliant,
                 },
             });
+
+            static object Row(string? planned, string? legal) => new { planned, legal };
         });
 
         app.MapGet("/api/ping", () => Results.Ok(new { ok = true }));

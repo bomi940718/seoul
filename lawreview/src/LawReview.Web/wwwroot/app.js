@@ -10,24 +10,30 @@ const state = {
     allowedUse: "", allowedUseBasis: "", disallowedUse: "", disallowedUseBasis: "",
     province: "", city: "",
   },
-  // 설계개요 표: 표준 순서 고정
+  // 설계개요 표: 표준 순서 고정 (실무 서식 그대로)
+  //  plan/legal 종류
+  //    input  : 사람이 넣는 값
+  //    derived: 엔진이 계산해 채우는 칸 (편집 불가)
+  //    param  : 기준값을 작게 입력받고, 그 옆/아래에 계산 결과를 보여주는 칸
+  //             (입력과 결과가 한 칸을 공유해 서로 덮어쓰지 않도록 분리한 것)
   rows: [
-    { key: "buildingArea", label: "건 축 면 적", calc: true },
-    { key: "coverage",     label: "건 폐 율",    calc: true, legalInput: true, legalUnit: "%" },
-    { key: "grossArea",    label: "연 면 적",    calc: true },
-    { key: "floorRatio",   label: "용 적 률",    calc: true, legalInput: true, legalUnit: "%" },
-    { key: "scale",        label: "건 축 규 모", floors: true },
-    { key: "height",       label: "최 고 높 이" },
-    { key: "landscape",    label: "조 경 면 적" },
-    { key: "parkingType",  label: "주 차 대 수", sub: "주차형식" },
-    { key: "parkingIn",    sub: "옥내" },
-    { key: "parkingOut",   sub: "옥외" },
-    { key: "parkingDis",   sub: "장애인전용" },
-    { key: "parkingExt",   sub: "확장형" },
-    { key: "parkingEco",   sub: "친환경" },
-    { key: "parkingAll",   sub: "전체" },
+    { key: "buildingArea", label: "건 축 면 적", plan: "input", planUnit: "m²", planDerived: true, legal: "derived" },
+    { key: "coverage",     label: "건 폐 율",    plan: "derived", legal: "param", legalUnit: "%" },
+    { key: "grossArea",    label: "연 면 적",    plan: "derived", legal: "derived" },
+    { key: "floorRatio",   label: "용 적 률",    plan: "derived", legal: "param", legalUnit: "%" },
+    { key: "scale",        label: "건 축 규 모", plan: "input", legal: "input" },
+    { key: "height",       label: "최 고 높 이", plan: "input", planUnit: "m", legal: "input" },
+    { key: "landscape",    label: "조 경 면 적", plan: "input", planUnit: "m²", legal: "param", legalUnit: "%" },
+    { key: "parkingType",  label: "주 차 대 수", sub: "주차형식", plan: "input", legal: "input" },
+    { key: "parkingIn",    sub: "옥내",       plan: "input", legal: "input" },
+    { key: "parkingOut",   sub: "옥외",       plan: "derived", legal: "param", legalUnit: "m² 당 1대", legalPrefix: "시설면적" },
+    { key: "parkingDis",   sub: "장애인전용", plan: "derived", legal: "derived" },
+    { key: "parkingExt",   sub: "확장형",     plan: "derived", legal: "derived" },
+    { key: "parkingEco",   sub: "친환경",     plan: "derived", legal: "derived" },
+    { key: "parkingAll",   sub: "전체",       plan: "derived", legal: "derived" },
   ],
   values: {},   // key -> { before, plan, after, legal, basis }
+  floors: [],   // { bldg, floor, use, excl, common, exclude }
 };
 
 const $ = (s, r = document) => r.querySelector(s);
@@ -66,12 +72,45 @@ function renderScaleTable() {
 function cellTd(row, v, slot, cls) {
   const td = document.createElement("td");
   td.className = cls;
-  // 계산으로 채워지는 칸은 편집 잠금(값은 엔진이 산정식 문자열로 넣는다)
-  const isCalc = row.calc && (slot === "plan" || slot === "before" || slot === "after")
-              || (row.calc && slot === "legal" && !row.legalInput);
-  const extra = isCalc ? "calc formula" : (row.legalInput && slot === "legal" ? "num" : "");
-  td.appendChild(makeCell(row.key, slot, v[slot], extra, isCalc ? "" : "입력"));
+  const kind = slot === "legal" ? (row.legal || "input") : (row.plan || "input");
+
+  if (kind === "derived") {
+    td.appendChild(derivedBox(row.key, slot, v[slot]));
+    return td;
+  }
+
+  if (kind === "param") {
+    // 기준값(작은 입력) + 계산 결과(아래 줄). 서로 다른 저장소를 쓴다.
+    const wrap = document.createElement("div");
+    wrap.className = "param-cell";
+    if (row.legalPrefix) wrap.appendChild(tag(row.legalPrefix));
+    wrap.appendChild(makeCell(row.key, slot, v[slot], "num param", "0"));
+    if (row.legalUnit) wrap.appendChild(tag(row.legalUnit));
+    td.appendChild(wrap);
+    td.appendChild(derivedBox(row.key, slot + "Calc", v[slot + "Calc"]));
+    return td;
+  }
+
+  // 일반 입력. 파생 표기가 있는 행(건축면적)은 산정식을 아래에 보조로 보여준다.
+  const wrap = document.createElement("div");
+  wrap.className = "param-cell";
+  wrap.appendChild(makeCell(row.key, slot, v[slot], row.planUnit ? "num" : "", "입력"));
+  if (row.planUnit && slot !== "legal") wrap.appendChild(tag(row.planUnit));
+  td.appendChild(wrap);
+  if (row.planDerived && slot !== "legal") td.appendChild(derivedBox(row.key, slot + "Calc", v[slot + "Calc"]));
   return td;
+}
+
+const tag = (t) => { const s = document.createElement("span"); s.className = "unit-tag"; s.textContent = t; return s; };
+
+/// 엔진이 채우는 표시 전용 영역 (사람이 못 고치므로 입력을 덮어쓸 일이 없다)
+function derivedBox(key, slot, value) {
+  const d = document.createElement("div");
+  d.className = "cell calc formula";
+  d.dataset.key = key;
+  d.dataset.slot = slot;
+  d.textContent = value || "";
+  return d;
 }
 
 function makeCell(key, slot, value, extra, ph) {
@@ -81,11 +120,9 @@ function makeCell(key, slot, value, extra, ph) {
   d.dataset.slot = slot;
   if (ph) d.dataset.ph = ph;
   d.textContent = value || "";
-  if (!extra?.includes("calc")) {
-    d.contentEditable = "true";
-    d.addEventListener("input", () => { (state.values[key] ||= {})[slot] = d.textContent; });
-    d.addEventListener("blur", recalc);
-  }
+  d.contentEditable = "true";
+  d.addEventListener("input", () => { (state.values[key] ||= {})[slot] = d.textContent; });
+  d.addEventListener("blur", recalc);
   return d;
 }
 
@@ -99,6 +136,107 @@ function bindHeadFields() {
   });
 }
 
+// ── 면적표 ───────────────────────────────────────────────────
+// 연면적(용적률 산정 기준)의 출처. 엑셀에서 행을 복사해 붙여넣을 수 있어야 한다.
+function renderAreaTable() {
+  const body = $("#areaBody");
+  body.innerHTML = "";
+  if (state.floors.length === 0) addFloorRow(false);
+
+  state.floors.forEach((f, i) => {
+    const tr = document.createElement("tr");
+    tr.appendChild(areaCell(i, "bldg", "동"));
+    tr.appendChild(areaCell(i, "floor", "층"));
+    tr.appendChild(areaCell(i, "use", "용도"));
+    tr.appendChild(areaCell(i, "excl", "0.00", true));
+    tr.appendChild(areaCell(i, "common", "0.00", true));
+
+    const sum = document.createElement("td");
+    sum.className = "total";
+    sum.textContent = fmt(num(f.excl) + num(f.common));
+    tr.appendChild(sum);
+
+    // 연면적 제외 여부 (PIT 등)
+    const note = document.createElement("td");
+    const lab = document.createElement("label");
+    lab.className = "flag";
+    const cb = document.createElement("input");
+    cb.type = "checkbox";
+    cb.checked = !!f.exclude;
+    cb.addEventListener("change", () => { f.exclude = cb.checked; refreshAreaTotals(); recalc(); });
+    lab.appendChild(cb);
+    lab.appendChild(document.createTextNode("연면적 제외"));
+    note.appendChild(lab);
+    tr.appendChild(note);
+
+    const del = document.createElement("td");
+    const btn = document.createElement("button");
+    btn.className = "row-del"; btn.textContent = "×"; btn.title = "행 삭제";
+    btn.addEventListener("click", () => { state.floors.splice(i, 1); renderAreaTable(); recalc(); });
+    del.appendChild(btn);
+    tr.appendChild(del);
+
+    body.appendChild(tr);
+  });
+  refreshAreaTotals();
+}
+
+function areaCell(i, field, ph, isNum) {
+  const td = document.createElement("td");
+  const d = document.createElement("div");
+  d.className = "cell" + (isNum ? " num" : "");
+  d.contentEditable = "true";
+  d.dataset.ph = ph;
+  d.dataset.row = i;
+  d.dataset.field = field;
+  d.textContent = state.floors[i][field] ?? "";
+  d.addEventListener("input", () => { state.floors[i][field] = d.textContent.trim(); });
+  d.addEventListener("blur", () => { renderAreaTable(); recalc(); });
+  d.addEventListener("paste", onAreaPaste);
+  td.appendChild(d);
+  return td;
+}
+
+/// 엑셀에서 여러 행을 붙여넣으면 표에 그대로 펼친다(탭 구분).
+function onAreaPaste(e) {
+  const text = (e.clipboardData || window.clipboardData).getData("text");
+  if (!text || !/[\t\n]/.test(text)) return;      // 단일 셀 붙여넣기는 기본 동작
+  e.preventDefault();
+  const start = +e.currentTarget.dataset.row;
+  const rows = text.split(/\r?\n/).filter((l) => l.trim());
+  rows.forEach((line, k) => {
+    const c = line.split("\t");
+    const target = state.floors[start + k] || (state.floors[start + k] = blankFloor());
+    if (c[0] !== undefined) target.bldg = c[0].trim();
+    if (c[1] !== undefined) target.floor = c[1].trim();
+    if (c[2] !== undefined) target.use = c[2].trim();
+    if (c[3] !== undefined) target.excl = c[3].trim();
+    if (c[4] !== undefined) target.common = c[4].trim();
+  });
+  renderAreaTable();
+  recalc();
+  status(`면적표 ${rows.length}행 붙여넣기`);
+}
+
+const blankFloor = () => ({ bldg: "", floor: "", use: "", excl: "", common: "", exclude: false });
+function addFloorRow(render = true) {
+  const last = state.floors[state.floors.length - 1];
+  const f = blankFloor();
+  if (last) { f.bldg = last.bldg; f.use = last.use; }   // 동·용도는 이어받는 편이 입력이 빠르다
+  state.floors.push(f);
+  if (render) renderAreaTable();
+}
+$("#btnAddFloor").addEventListener("click", () => addFloorRow());
+
+function refreshAreaTotals() {
+  const gross = state.floors.filter((f) => !f.exclude).reduce((s, f) => s + num(f.excl) + num(f.common), 0);
+  const total = state.floors.reduce((s, f) => s + num(f.excl) + num(f.common), 0);
+  $("#areaGross").textContent = gross ? fmt(gross) : "-";
+  $("#areaTotal").textContent = total ? fmt(total) : "-";
+}
+
+const fmt = (v) => (v || 0).toLocaleString("ko-KR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
 // ── 계산 (엔진 호출) ─────────────────────────────────────────
 let recalcTimer = null;
 function recalc() {
@@ -110,20 +248,40 @@ async function doRecalc() {
   const siteArea = num(state.project.siteArea);
   if (!siteArea) return;
 
+  // 면적표를 동 단위로 묶어 엔진 모델(Buildings/Floors)로 보낸다.
+  const byBldg = new Map();
+  for (const f of state.floors) {
+    if (!num(f.excl) && !num(f.common)) continue;
+    const name = f.bldg || "동";
+    if (!byBldg.has(name)) byBldg.set(name, []);
+    byBldg.get(name).push({
+      floorLabel: f.floor, use: f.use,
+      exclusiveArea: num(f.excl), commonArea: num(f.common),
+      excludeFromGrossArea: !!f.exclude,
+    });
+  }
+
   const payload = {
     projectName: state.project.projectName,
+    client: state.project.client,
     siteAddress: state.project.siteAddress,
     province: state.project.province,
     city: state.project.city,
     siteArea,
     primaryUse: state.project.primaryUse,
-    plannedBuildingArea: num(pick("buildingArea", "planSlot")),
+    plannedBuildingArea: buildingAreaInput(),
     zoning: {
       maxCoverageRatio: num(state.values.coverage?.legal) || null,
       maxFloorAreaRatio: num(state.values.floorRatio?.legal) || null,
+      landscapeRatio: landscapeRatioInput(),
+      source: state.values.coverage?.basis || "",
     },
-    parking: { areaPerSpace: num(state.values.parkingOut?.legal) || 200 },
-    buildings: [],
+    parking: {
+      areaPerSpace: num(state.values.parkingOut?.legal) || 200,
+      parkingType: state.values.parkingType?.[planSlot()] || "",
+      source: state.values.parkingType?.basis || "",
+    },
+    buildings: [...byBldg].map(([name, floors]) => ({ name, floors })),
   };
 
   try {
@@ -131,14 +289,39 @@ async function doRecalc() {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
     });
     const o = await r.json();
-    setCalc("buildingArea", "legal", o.coverage.legal);
-    setCalc("coverage", "planSlot", o.coverage.planned);
-    setCalc("grossArea", "legal", o.floorArea.legal);
-    setCalc("floorRatio", "planSlot", o.floorArea.planned);
-    setCalc("parkingOut", "planSlot", o.parking.planned.formula);
-    setCalc("parkingDis", "planSlot", o.parking.planned.disabled);
-    status("계산 갱신됨");
+    // 계산 결과는 표시 전용 칸에만 쓴다. 사람이 넣은 기준값 칸은 절대 건드리지 않는다.
+    for (const [key, v] of Object.entries(o.rows)) {
+      const row = state.rows.find((x) => x.key === key);
+      if (!row) continue;
+      const planTarget = row.plan === "derived" ? planSlot() : planSlot() + "Calc";
+      const legalTarget = row.legal === "derived" ? "legal" : "legalCalc";
+      if (v?.planned != null) setCalc(key, planTarget, v.planned);
+      if (v?.legal != null) setCalc(key, legalTarget, v.legal);
+    }
+    warnCompliance(o.compliance);
+    status(`계산 갱신됨 — 연면적 ${fmt(o.grossFloorArea)} ㎡`);
   } catch { /* 입력 중 부분 오류는 무시 */ }
+}
+
+// 건축면적은 사용자가 직접 넣는 값(설계 결과물).
+const buildingAreaInput = () => num(state.values.buildingArea?.[planSlot()]);
+
+// 조경면적 법정 기준: "5"(=5%) 또는 "0.05" 모두 허용.
+function landscapeRatioInput() {
+  const n = num(state.values.landscape?.legal);
+  if (!n) return null;
+  return n > 1 ? n / 100 : n;
+}
+
+function warnCompliance(c) {
+  markRow("coverage", c?.coverage);
+  markRow("floorRatio", c?.floorArea);
+  markRow("scale", c?.floors);
+}
+function markRow(key, ok) {
+  const el = document.querySelector(`.cell[data-key="${key}"][data-slot="${planSlot()}"]`);
+  if (!el) return;
+  el.classList.toggle("over", ok === false);
 }
 
 const planSlot = () => (state.mode === "신축" ? "plan" : "after");
@@ -220,5 +403,6 @@ $("#btnSaveSettings").addEventListener("click", async () => {
 // ── 시작 ─────────────────────────────────────────────────────
 document.body.dataset.mode = state.mode;
 renderScaleTable();
+renderAreaTable();
 bindHeadFields();
 status("준비됨 — 대지위치를 입력하고 자동조회를 누르세요");

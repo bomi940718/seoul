@@ -80,6 +80,43 @@
         <tbody id="scaleBody"><!-- app.js가 채운다 --></tbody>
       </table>
     </div>
+
+    <div class="sheet">
+      <div class="sheet-head">
+        <h2 class="sheet-title">■ 각 층별 면적표</h2>
+        <div class="sheet-tools">
+          <span class="hint-inline">엑셀에서 행을 복사해 붙여넣기(Ctrl+V) 가능 — 동/층/용도/전용/공용</span>
+          <button class="btn sm ghost" id="btnAddFloor">행 추가</button>
+        </div>
+      </div>
+      <table class="doc area" id="areaTable">
+        <thead>
+          <tr>
+            <th style="width:150px">동</th>
+            <th style="width:90px">층 별</th>
+            <th>용 도</th>
+            <th style="width:120px">전용 (㎡)</th>
+            <th style="width:120px">공용 (㎡)</th>
+            <th style="width:120px">합계 (㎡)</th>
+            <th style="width:110px">비 고</th>
+            <th style="width:44px"></th>
+          </tr>
+        </thead>
+        <tbody id="areaBody"></tbody>
+        <tfoot>
+          <tr>
+            <th colspan="5">용적률 산정용 연면적</th>
+            <td class="total" id="areaGross">-</td>
+            <td colspan="2" class="sub">연면적 제외 층은 비고에서 제외 표시</td>
+          </tr>
+          <tr>
+            <th colspan="5">전체 바닥면적 합계</th>
+            <td class="total" id="areaTotal">-</td>
+            <td colspan="2"></td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
   </section>
 
   <section class="page" id="page-laws"><div class="sheet"><h2 class="sheet-title">■ 검토법규</h2><p class="todo">다음 단계에서 연결합니다.</p></div></section>
