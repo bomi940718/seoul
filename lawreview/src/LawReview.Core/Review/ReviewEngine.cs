@@ -307,7 +307,7 @@ public sealed class ReviewEngine
     /// 검색 결과에서 원하는 법령을 고른다. 정확 일치 → 공백 무시 일치 → 첫 결과 순.
     /// (예: "대전광역시 건축 조례" 검색 시 첫 결과는 "대전광역시 건축기본조례"라 첫 결과 폴백만으로는 위험하다.)
     /// </summary>
-    internal static LawSummary? PickBestMatch(IReadOnlyList<LawSummary> hits, string lawName)
+    public static LawSummary? PickBestMatch(IReadOnlyList<LawSummary> hits, string lawName)
     {
         var normalized = lawName.Replace(" ", "");
         return hits.FirstOrDefault(h => h.Name == lawName)

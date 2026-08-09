@@ -349,9 +349,29 @@ $("#btnLookup").addEventListener("click", async () => {
   if (d.area) setField("siteArea", Number(d.area).toFixed(2));
   if (d.category) setField("landCategory", d.category);
   setField("siteAddress", d.address);
-  status(`자동조회 완료 — ${d.province} ${d.city} / 지목 ${d.category || "-"} / ${d.zones.length}개 지역·지구`);
+
+  // 법정 건폐율·용적률을 도시계획조례에서 함께 가져온다(지구단위계획이 없어도 검토가 되도록).
+  // 지구단위계획 값이 따로 있으면 사용자가 덮어쓰면 된다.
+  let limitNote = "";
+  const L = d.limits || {};
+  if (L.coverage != null) { setCell("coverage", "legal", String(L.coverage)); setCell("coverage", "basis", L.coverageBasis || ""); }
+  if (L.far != null) { setCell("floorRatio", "legal", String(L.far)); setCell("floorRatio", "basis", L.farBasis || ""); }
+  if (L.coverage != null || L.far != null) {
+    limitNote = ` / 법정 건폐율 ${L.coverage ?? "-"}% · 용적률 ${L.far ?? "-"}% (${L.zone || ""} 기준)`;
+  } else {
+    limitNote = " / 법정 한도는 조례에서 찾지 못했습니다 — 직접 입력하세요";
+  }
+
+  status(`자동조회 완료 — ${d.province} ${d.city} / 지목 ${d.category || "-"} / ${d.zones.length}개 지역·지구${limitNote}`);
   recalc();
 });
+
+/// 설계개요 표의 특정 칸에 값을 넣는다(사용자 입력 칸도 채워야 하므로 setCalc과 별도).
+function setCell(key, slot, value) {
+  (state.values[key] ||= {})[slot] = value;
+  const el = document.querySelector(`.cell[data-key="${key}"][data-slot="${slot}"]`);
+  if (el) el.textContent = value;
+}
 
 function setField(f, v) {
   state.project[f] = v;
@@ -550,6 +570,26 @@ function fill(sel, items, rowFn, cols) {
 }
 
 const esc = (s) => String(s ?? "").replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+
+// ── 검토서 저장 (DOCX) ───────────────────────────────────────
+$("#btnReport").addEventListener("click", async () => {
+  const payload = buildProjectPayload();
+  if (!payload.projectName) payload.projectName = state.project.projectName || "무제";
+  status("검토서 생성 중…");
+  const r = await fetch("/api/report", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ project: payload }),
+  });
+  const d = await r.json();
+  if (!d.ok) { status("검토서 저장 실패: " + d.message); return; }
+  status(`검토서 저장됨 — ${d.path} (${(d.size / 1024).toFixed(0)} KB)`);
+  if (confirm(`검토서를 저장했습니다.\n${d.path}\n\n지금 열까요?`)) {
+    await fetch("/api/report/open", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path: d.path }),
+    });
+  }
+});
 
 // ── 프로젝트 저장 / 불러오기 ─────────────────────────────────
 // 입력이 날아가지 않는 게 먼저다: 변경할 때마다 이 PC에 자동 저장하고,

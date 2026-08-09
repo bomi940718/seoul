@@ -1,7 +1,9 @@
 using System.Text.Json;
 using LawReview.Core;
 using LawReview.Core.LandUse;
+using LawReview.Core.LawApi;
 using LawReview.Core.Models;
+using LawReview.Core.Report;
 using LawReview.Core.Review;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -58,6 +60,10 @@ public static class ApiEndpoints
                 if (index is null)
                     return Results.Ok(new { ok = false, message = "조회 결과가 없습니다. 지번 주소인지 확인하세요." });
 
+                // 용도지역이 정해지면 법정 건폐율·용적률도 지자체 도시계획조례에서 바로 가져온다.
+                // (지구단위계획이 없어도 검토가 되어야 하므로 — 조례가 기본 기준)
+                var limits = await ResolveZoningLimitsAsync(s, index.Province, index.Zones);
+
                 return Results.Ok(new
                 {
                     ok = true,
@@ -68,6 +74,14 @@ public static class ApiEndpoints
                     zones = index.Zones,
                     area = index.Area,
                     category = index.Category,   // 지목 — 설계개요 대지면적 칸에 병기
+                    limits = new
+                    {
+                        coverage = limits.CoverageRatio,
+                        coverageBasis = limits.CoverageBasis,
+                        far = limits.FloorAreaRatio,
+                        farBasis = limits.FloorAreaBasis,
+                        zone = limits.MatchedZone,
+                    },
                 });
             }
             catch (Exception ex)
@@ -162,7 +176,87 @@ public static class ApiEndpoints
             ProjectStore.Delete(name) ? Results.Ok(new { deleted = true })
                                       : Results.NotFound(new { message = "없는 프로젝트입니다." }));
 
+        // ── 검토서 저장 (DOCX) ───────────────────────────────────────────
+        // 검토를 돌린 결과가 있으면 그것을, 없으면 설계개요만으로 문서를 만든다.
+        app.MapPost("/api/report", (ReportRequest req) =>
+        {
+            try
+            {
+                var result = ReviewJobs.LatestResult();
+                if (result is null || req.Project is not null)
+                {
+                    var project = req.Project ?? new ProjectInput();
+                    result ??= new ReviewResult { Project = project };
+                    // 저장 시점의 설계개요 입력을 문서에 반영한다.
+                    if (req.Project is not null) result = CloneWithProject(result, req.Project);
+                }
+
+                var dir = string.IsNullOrWhiteSpace(req.Folder)
+                    ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "법규검토서")
+                    : req.Folder!;
+                Directory.CreateDirectory(dir);
+
+                var name = ProjectStore.SafeName(
+                    string.IsNullOrWhiteSpace(req.FileName)
+                        ? $"{result.Project.ProjectName}_법규검토서_{DateTime.Now:yyyyMMdd}"
+                        : req.FileName!);
+                if (name.Length == 0) name = $"법규검토서_{DateTime.Now:yyyyMMdd}";
+                var path = Path.Combine(dir, name + ".docx");
+
+                new DocxReportBuilder().Build(result, path);
+                return Results.Ok(new { ok = true, path, size = new FileInfo(path).Length });
+            }
+            catch (Exception ex)
+            {
+                return Results.Ok(new { ok = false, message = ex.Message });
+            }
+        });
+
+        // 저장한 문서를 바로 열어본다.
+        app.MapPost("/api/report/open", (OpenRequest req) =>
+        {
+            if (!File.Exists(req.Path)) return Results.NotFound(new { message = "파일이 없습니다." });
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(req.Path) { UseShellExecute = true });
+            return Results.Ok(new { opened = true });
+        });
+
         app.MapGet("/api/ping", () => Results.Ok(new { ok = true }));
+    }
+
+    /// <summary>검토 결과의 판정은 유지하고 프로젝트 정보만 최신 입력으로 바꾼다.</summary>
+    private static ReviewResult CloneWithProject(ReviewResult src, ProjectInput project)
+    {
+        var copy = new ReviewResult { Project = project, Overview = QuantitativeCalculator.Calculate(project) };
+        foreach (var row in src.Rows) copy.Rows.Add(row);
+        foreach (var (k, v) in src.ReviewedLaws) copy.ReviewedLaws[k] = v;
+        return copy;
+    }
+
+    /// <summary>
+    /// 지자체 도시계획조례에서 용도지역별 법정 건폐율·용적률을 찾는다.
+    /// 법제처 키가 없거나 조회에 실패하면 조용히 빈 결과를 돌려준다(자동조회 자체는 살린다).
+    /// </summary>
+    private static async Task<ZoningLimitLookup> ResolveZoningLimitsAsync(
+        AppSettings s, string province, IReadOnlyList<string> zones)
+    {
+        if (s.MolegApiKey.Length == 0 || province.Length == 0 || zones.Count == 0)
+            return new ZoningLimitLookup();
+
+        try
+        {
+            var moleg = new MolegClient(Http, s.MolegApiKey);
+            var name = $"{province} 도시계획 조례";
+            var hits = await moleg.SearchAsync(name, LawTarget.Ordinance);
+            var best = ReviewEngine.PickBestMatch(hits, name);
+            if (best is null) return new ZoningLimitLookup();
+
+            var text = await moleg.GetLawTextAsync(best.SerialNo, LawTarget.Ordinance);
+            return ZoningLimitResolver.Resolve(text, zones);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException or JsonException)
+        {
+            return new ZoningLimitLookup();
+        }
     }
 }
 
@@ -170,3 +264,7 @@ public sealed record SettingsDto(string? MolegApiKey, string? ClaudeApiKey, stri
     string? ClaudeModel, string? VworldDomain);
 
 public sealed record LookupDto(string? Address);
+
+public sealed record ReportRequest(ProjectInput? Project, string? Folder, string? FileName);
+
+public sealed record OpenRequest(string Path);

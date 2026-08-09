@@ -84,6 +84,11 @@ public static class ReviewJobs
 
     public static ReviewJob? Get(string id) => Jobs.TryGetValue(id, out var j) ? j : null;
 
+    /// <summary>가장 최근에 끝난 검토 결과(검토서 저장에 쓴다).</summary>
+    public static ReviewResult? LatestResult() =>
+        Jobs.Values.Where(j => j.Done && j.Result is not null)
+            .Select(j => j.Result!).LastOrDefault();
+
     /// <summary>검토 결과를 화면 탭 구성에 맞게 변환한다(검토서 p4~p7 순서).</summary>
     public static object ToView(ReviewResult r)
     {
