@@ -36,6 +36,31 @@ public static class Municipality
         return c.Length > 0 ? BaseCity(c) : p;
     }
 
+    /// <summary>
+    /// 조례를 **적용 우선순위 순서**로 나열한다: 기초(시·군) → 광역(도).
+    ///
+    /// 법은 모법 → 광역 → 기초로 위임되고, 적용할 때는 그 역순으로 가장 구체적인 것부터 본다.
+    /// 예) 안양시 주차장 조례에 해당 용도가 없으면 → 경기도 주차장 조례 → 모법(주차장법 시행령).
+    /// 광역시는 자치구가 조례를 제정하지 않으므로 한 단계뿐이다.
+    /// </summary>
+    public static IReadOnlyList<string> OrdinanceHierarchy(string province, string city)
+    {
+        var p = (province ?? "").Trim();
+        var c = (city ?? "").Trim();
+        if (p.Length == 0) return c.Length > 0 ? new[] { c } : Array.Empty<string>();
+
+        // 특별시·광역시·특별자치시: 광역 한 단계 (자치구는 제정 주체가 아니다)
+        if (p.EndsWith("특별시") || p.EndsWith("광역시") || p.EndsWith("특별자치시"))
+            return new[] { p };
+
+        // 제주특별자치도는 행정시에 자치권이 없어 도가 제정한다
+        if (p.StartsWith("제주")) return new[] { p };
+
+        // 도·특별자치도: 시·군 조례를 먼저 보고, 없으면 도 조례
+        var basic = c.Length > 0 ? BaseCity(c) : "";
+        return basic.Length > 0 && basic != p ? new[] { basic, p } : new[] { p };
+    }
+
     /// <summary>"성남시 분당구" → "성남시" (자치구는 건축·도시계획 조례를 제정하지 않는다).</summary>
     internal static string BaseCity(string city)
     {

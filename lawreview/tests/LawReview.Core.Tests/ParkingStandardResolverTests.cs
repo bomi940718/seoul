@@ -46,20 +46,74 @@ public class ParkingStandardResolverTests
     }
 
     [Fact]
-    public void 목록에_없는_용도는_그_밖의_건축물_기준을_쓴다()
+    public void 시행령에_없는_용도는_정확매칭이_아니면_비어_있다()
     {
-        var r = ParkingStandardResolver.Resolve(Decree(), "동물병원");
-        Assert.Equal(300, r.AreaPerSpace);
+        // Resolve는 정확 매칭만 한다. "그 밖의 건축물"로 떨어뜨리는 건 ResolveChain의 몫이다.
+        Assert.Null(ParkingStandardResolver.Resolve(Decree(), "동물병원").AreaPerSpace);
+    }
+
+    // ── 법 위계: 기초 조례 → 광역 조례 → 모법 → (모법의 "그 밖의 건축물") ──
+
+    private static readonly string[] AnyangLines =
+    {
+        "7. 수련시설, 공장(아파트형은 제외한다), 발전시설",
+        "○ 시설면적 200㎡당 1대(시설면적/200㎡) 다만, 산업단지 공장용 건축물은 450㎡당 1대",
+    };
+
+    private static readonly string[] GyeonggiLines =
+    {
+        "1. 위락시설",
+        "○ 시설면적 80㎡당 1대(시설면적/80㎡)",
+    };
+
+    private static OrdinanceAnnex[] Hierarchy() =>
+        new[]
+        {
+            new OrdinanceAnnex("안양시 주차장 설치 및 관리 조례", "link1", AnyangLines),
+            new OrdinanceAnnex("경기도 주차장 조례", "link2", GyeonggiLines),
+        };
+
+    [Fact]
+    public void 기초_조례에_있으면_가장_먼저_적용한다()
+    {
+        // 공장: 시행령 350 / 안양시 조례 200 → 기초 조례가 이긴다
+        var r = ParkingStandardResolver.ResolveChain(Hierarchy(), Decree(), "공장");
+        Assert.Equal(200, r.AreaPerSpace);
+        Assert.Contains("안양시", r.Basis!);
     }
 
     [Fact]
-    public void 조례로_달라질_수_있음을_함께_알린다()
+    public void 기초에_없으면_광역_조례로_내려간다()
     {
-        // 실제로 둔곡(대전)은 조례가 공장을 200㎡/대로 강화했다.
-        // 자치법규 별표는 HWP라 읽을 수 없으므로 안내와 원문 링크를 남겨야 한다.
-        var r = ParkingStandardResolver.Resolve(Decree(), "공장");
-        Assert.Contains("조례", r.Note);
-        Assert.NotEmpty(r.AnnexLink);
+        // 위락시설: 안양시 목록엔 없고 경기도 조례에 80㎡ → 광역 조례 적용(시행령 100이 아니다)
+        var r = ParkingStandardResolver.ResolveChain(Hierarchy(), Decree(), "위락시설");
+        Assert.Equal(80, r.AreaPerSpace);
+        Assert.Contains("경기도", r.Basis!);
+    }
+
+    [Fact]
+    public void 조례에_모두_없으면_모법으로_간다()
+    {
+        // 창고시설: 두 조례에 없음 → 주차장법 시행령 별표 1(400㎡)
+        var r = ParkingStandardResolver.ResolveChain(Hierarchy(), Decree(), "창고시설");
+        Assert.Equal(400, r.AreaPerSpace);
+        Assert.Equal("주차장법 시행령 [별표 1]", r.Basis);
+        Assert.Contains("모법 기준을 적용", r.Note!);
+    }
+
+    [Fact]
+    public void 어느_법에도_없으면_모법의_그_밖의_건축물을_쓴다()
+    {
+        var r = ParkingStandardResolver.ResolveChain(Hierarchy(), Decree(), "동물병원");
+        Assert.Equal(300, r.AreaPerSpace);
+        Assert.Contains("그 밖의 건축물", r.Note!);
+    }
+
+    [Fact]
+    public void 조례가_없어도_모법으로_판정된다()
+    {
+        var r = ParkingStandardResolver.ResolveChain(Array.Empty<OrdinanceAnnex>(), Decree(), "판매시설");
+        Assert.Equal(150, r.AreaPerSpace);
     }
 
     [Fact]

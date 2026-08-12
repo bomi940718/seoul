@@ -242,12 +242,24 @@ public static class ApiEndpoints
             if (best is null) return null;
 
             var decree = await moleg.GetLawTextAsync(best.SerialNo, LawTarget.Law);
-            var std = ParkingStandardResolver.Resolve(decree, primaryUse!);
-            if (std.AreaPerSpace is null) return null;
 
-            // 지자체 조례 별표(원문 링크만) — 실제 적용 기준은 이쪽이 우선한다.
-            var authority = Municipality.OrdinanceAuthority(province, city);
-            var ordinance = await FindParkingOrdinanceAsync(moleg, authority);
+            // 법 위계대로 조례를 모은다: 기초(시·군) → 광역(도). 각 별표(HWP)를 받아 읽는다.
+            var annexes = new List<OrdinanceAnnex>();
+            foreach (var authority in Municipality.OrdinanceHierarchy(province, city))
+            {
+                var ord = await FindParkingOrdinanceAsync(moleg, authority);
+                if (ord is null) continue;
+                // 별표가 여러 개면(주차요금표·표지판 등) 어느 것이 설치기준인지 제목만으로는 모른다.
+                // 전부 받아 이어 붙인 뒤 기준을 찾는다.
+                var lines = new List<string>();
+                foreach (var link in ord.Value.Links)
+                    lines.AddRange(await DownloadAnnexTextAsync(link));
+                annexes.Add(new OrdinanceAnnex(ord.Value.Name, ord.Value.Links.FirstOrDefault() ?? "", lines));
+            }
+
+            // 기초 조례 → 광역 조례 → 모법 → (모법의 "그 밖의 건축물")
+            var std = ParkingStandardResolver.ResolveChain(annexes, decree, primaryUse!);
+            if (std.AreaPerSpace is null) return null;
 
             return new
             {
@@ -255,8 +267,9 @@ public static class ApiEndpoints
                 basis = std.Basis,
                 matchedUse = std.MatchedUse,
                 note = std.Note,
-                ordinanceName = ordinance?.Name,
-                ordinanceAnnexLink = ordinance?.Link,
+                ordinanceName = annexes.FirstOrDefault()?.Name,
+                ordinanceAnnexLink = annexes.FirstOrDefault()?.Link,
+                checkedOrdinances = annexes.Select(a => a.Name),
             };
         }
         catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException or JsonException)
@@ -269,22 +282,43 @@ public static class ApiEndpoints
     /// 지자체 주차장 조례를 찾는다. 이름이 지자체마다 달라("○○시 주차장 조례",
     /// "○○시 주차장 설치 및 관리 조례") 검색 결과에서 골라야 한다.
     /// </summary>
-    private static async Task<(string Name, string Link)?> FindParkingOrdinanceAsync(MolegClient moleg, string authority)
+    private static async Task<(string Name, IReadOnlyList<string> Links)?> FindParkingOrdinanceAsync(
+        MolegClient moleg, string authority)
     {
         if (authority.Length == 0) return null;
         var hits = await moleg.SearchAsync($"{authority} 주차장", LawTarget.Ordinance);
 
-        // 지자체명 바로 뒤가 "주차장"이어야 한다. 그러지 않으면 "대전광역시 대덕구 임산부 우대 및
-        // 전용주차장…" 같은 자치구·특수목적 조례가 잡힌다.
-        var prefix = authority + " 주차장";
+        // 부설주차장 설치기준을 담은 "본체" 조례만 골라야 한다.
+        // 무료개방·지원·요금·특별회계 같은 곁가지 조례가 잡히면 엉뚱한 별표를 읽게 된다.
+        static bool IsSideOrdinance(string n) =>
+            n.Contains("개방") || n.Contains("지원") || n.Contains("특별회계") || n.Contains("기금")
+            || n.Contains("공공청사") || n.Contains("전용주차") || n.Contains("운영");
+
         var best = hits.FirstOrDefault(h => h.Name == $"{authority} 주차장 조례")
                    ?? hits.FirstOrDefault(h => h.Name == $"{authority} 주차장 설치 및 관리 조례")
-                   ?? hits.FirstOrDefault(h => h.Name.StartsWith(prefix) && h.Name.EndsWith("조례"));
+                   ?? hits.FirstOrDefault(h => h.Name.StartsWith($"{authority} 주차장")
+                                               && h.Name.EndsWith("조례") && !IsSideOrdinance(h.Name));
         if (best is null) return null;
 
         var text = await moleg.GetLawTextAsync(best.SerialNo, LawTarget.Ordinance);
-        var annex = text.Annexes?.FirstOrDefault();
-        return (best.Name, annex?.Link ?? "");
+        var links = (text.Annexes ?? Array.Empty<Annex>())
+            .Select(a => a.Link).Where(l => l.Length > 0).Distinct().ToList();
+        return (best.Name, links);
+    }
+
+    /// <summary>조례 별표 첨부(HWP)를 받아 본문 줄을 뽑는다. 실패하면 빈 목록(모법으로 넘어간다).</summary>
+    private static async Task<IReadOnlyList<string>> DownloadAnnexTextAsync(string? link)
+    {
+        if (string.IsNullOrWhiteSpace(link)) return Array.Empty<string>();
+        try
+        {
+            var bytes = await Http.GetByteArrayAsync(link);
+            return HwpTextExtractor.ExtractLines(bytes);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        {
+            return Array.Empty<string>();
+        }
     }
 
     /// <summary>검토 결과의 판정은 유지하고 프로젝트 정보만 최신 입력으로 바꾼다.</summary>
