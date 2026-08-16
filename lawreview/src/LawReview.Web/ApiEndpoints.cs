@@ -91,6 +91,7 @@ public static class ApiEndpoints
                         zone = limits.MatchedZone,
                     },
                     parking = await ResolveParkingAsync(s, index.Province, index.City, dto.PrimaryUse),
+                    landscape = await ResolveLandscapeAsync(s, index.Province, index.City),
                 });
             }
             catch (Exception ex)
@@ -312,6 +313,48 @@ public static class ApiEndpoints
         var links = (text.Annexes ?? Array.Empty<Annex>())
             .Select(a => a.Link).Where(l => l.Length > 0).Distinct().ToList();
         return (best.Name, links);
+    }
+
+    /// <summary>
+    /// 법정 조경면적 비율을 건축조례에서 가져온다. 연면적 구간별로 갈리므로 구간표를 통째로 넘기고,
+    /// 실제 적용 비율은 화면이 현재 연면적으로 고른다(연면적은 자동조회 시점에 아직 없을 수 있다).
+    /// 법 위계는 주차와 동일하게 기초 조례 → 광역 조례 순으로 본다.
+    /// </summary>
+    private static async Task<object?> ResolveLandscapeAsync(AppSettings s, string province, string city)
+    {
+        if (s.MolegApiKey.Length == 0) return null;
+        try
+        {
+            var moleg = new MolegClient(Http, s.MolegApiKey);
+            foreach (var authority in Municipality.OrdinanceHierarchy(province, city))
+            {
+                var name = $"{authority} 건축 조례";
+                var hits = await moleg.SearchAsync(name, LawTarget.Ordinance);
+                var best = ReviewEngine.PickBestMatch(hits, name);
+                if (best is null) continue;
+
+                var text = await moleg.GetLawTextAsync(best.SerialNo, LawTarget.Ordinance);
+                var std = LandscapeRatioResolver.Resolve(text);
+                if (std.Rules.Count == 0) continue;
+
+                return new
+                {
+                    basis = std.Basis,
+                    rules = std.Rules.Select(r => new
+                    {
+                        minGrossArea = r.MinGrossArea,
+                        maxGrossArea = r.MaxGrossArea,
+                        ratio = r.Ratio,
+                        text = r.Text,
+                    }),
+                };
+            }
+            return null;
+        }
+        catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException or JsonException)
+        {
+            return null;
+        }
     }
 
     /// <summary>조례 별표 첨부(HWP)를 받아 본문 줄을 뽑는다. 실패하면 빈 목록(모법으로 넘어간다).</summary>

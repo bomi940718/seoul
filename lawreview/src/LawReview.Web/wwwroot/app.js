@@ -248,6 +248,9 @@ async function doRecalc() {
   const siteArea = num(state.project.siteArea);
   if (!siteArea) return;
 
+  // 면적표가 바뀌면 조경 구간도 달라질 수 있다.
+  applyLandscapeRule();
+
   // 면적표를 동 단위로 묶어 엔진 모델(Buildings/Floors)로 보낸다.
   const byBldg = new Map();
   for (const f of state.floors) {
@@ -305,6 +308,20 @@ async function doRecalc() {
 
 // 건축면적은 사용자가 직접 넣는 값(설계 결과물).
 const buildingAreaInput = () => num(state.values.buildingArea?.[planSlot()]);
+
+/// 현재 연면적에 해당하는 조례 조경 구간을 골라 법정 칸에 넣는다.
+function applyLandscapeRule() {
+  if (!state.landscapeRules?.length) return;
+  const gross = state.floors
+    .filter((f) => !f.exclude)
+    .reduce((s, f) => s + num(f.excl) + num(f.common), 0);
+  if (!gross) return;
+
+  const hit = state.landscapeRules.find(
+    (r) => gross >= r.minGrossArea && (r.maxGrossArea == null || gross < r.maxGrossArea));
+  if (!hit) return;
+  setCell("landscape", "legal", String(Math.round(hit.ratio * 1000) / 10));   // 0.15 → 15
+}
 
 // 조경면적 법정 기준: "5"(=5%) 또는 "0.05" 모두 허용.
 function landscapeRatioInput() {
@@ -374,6 +391,12 @@ $("#btnLookup").addEventListener("click", async () => {
   } else if (state.project.primaryUse) {
     parkNote = " / 주차 기준을 찾지 못했습니다 — 직접 입력하세요";
   }
+
+  // 조경 비율은 연면적 구간별로 갈리므로 구간표를 보관하고, 계산할 때 현재 연면적으로 고른다.
+  state.landscapeRules = d.landscape?.rules || null;
+  state.landscapeBasis = d.landscape?.basis || "";
+  if (state.landscapeBasis) setCell("landscape", "basis", state.landscapeBasis);
+  applyLandscapeRule();
 
   status(`자동조회 완료 — ${d.province} ${d.city} / 지목 ${d.category || "-"} / ${d.zones.length}개 지역·지구${limitNote}${parkNote}`);
   recalc();
