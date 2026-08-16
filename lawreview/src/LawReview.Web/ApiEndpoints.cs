@@ -14,7 +14,15 @@ namespace LawReview.Web;
 /// <summary>화면(HTML)이 호출하는 엔진 API. 계산·조회는 전부 LawReview.Core가 수행한다.</summary>
 public static class ApiEndpoints
 {
-    private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromMinutes(2) };
+    private static readonly HttpClient Http = CreateHttpClient();
+
+    private static HttpClient CreateHttpClient()
+    {
+        var http = new HttpClient { Timeout = TimeSpan.FromMinutes(2) };
+        // 법제처 첨부파일(flDownload)은 User-Agent가 없으면 HWP 대신 HTML 안내 페이지를 돌려준다.
+        http.DefaultRequestHeaders.UserAgent.ParseAdd("Mozilla/5.0 (Windows NT 10.0; Win64; x64) LawReview/1.0");
+        return http;
+    }
 
     public static void Map(WebApplication app)
     {
@@ -313,6 +321,8 @@ public static class ApiEndpoints
         try
         {
             var bytes = await Http.GetByteArrayAsync(link);
+            // HWP가 아니면(안내 HTML 등) 조용히 넘긴다 — 모법 기준으로 떨어진다.
+            if (!HwpTextExtractor.LooksLikeHwp(bytes)) return Array.Empty<string>();
             return HwpTextExtractor.ExtractLines(bytes);
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)

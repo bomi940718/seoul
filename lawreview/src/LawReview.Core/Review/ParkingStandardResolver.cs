@@ -127,21 +127,34 @@ public static class ParkingStandardResolver
             if (item.Success && !OrdinanceStd.IsMatch(line) && !line.Contains("㎡당"))
             {
                 current = new AnnexRow { Label = item.Groups[2].Value.Trim(), UseText = item.Groups[2].Value };
-                current.Uses = SplitUses(current.UseText);
                 rows.Add(current);
                 continue;
             }
-            if (current is null || current.AreaPerSpace is not null) continue;
+            if (current is null) continue;
+
+            // 기준줄("○ …")이 나오기 전까지는 용도명이 이어지는 줄이다.
+            // (조례에 따라 "2. 문화 및 집회시설" 다음 줄에 ", 판매시설, 의료시설…"이 이어진다)
+            if (current.AreaPerSpace is null && !OrdinanceStd.IsMatch(line) && !line.Contains("㎡당"))
+            {
+                current.UseText += " " + line.Trim();
+                continue;
+            }
+            if (current.AreaPerSpace is not null) continue;
 
             if (AreaPer.Match(line) is { Success: true } m
                 && double.TryParse(m.Groups[1].Value.Replace(",", ""),
                     NumberStyles.Float, CultureInfo.InvariantCulture, out var v))
             {
                 current.AreaPerSpace = v;
-                var proviso = line.IndexOf("다만", StringComparison.Ordinal);
+                // "다만, …" / "단, …" 단서는 값이 갈리는 조건이므로 반드시 남긴다.
+                var proviso = new[] { "다만", "단," }
+                    .Select(k => line.IndexOf(k, StringComparison.Ordinal))
+                    .Where(i => i > 0).DefaultIfEmpty(-1).Min();
                 if (proviso > 0) current.Proviso = line[proviso..].Trim();
             }
         }
+        // 용도명은 여러 줄이 모인 뒤에야 완성되므로 마지막에 분해한다.
+        foreach (var r in rows) r.Uses = SplitUses(r.UseText);
         return rows;
     }
 
@@ -181,6 +194,7 @@ public static class ParkingStandardResolver
     }
 
     /// <summary>"7. 수련시설, 공장(아파트형은 제외한다)" → ["수련시설", "공장"]</summary>
+    // (아래 SplitUses는 시행령·조례 양쪽에서 함께 쓴다)
     internal static List<string> SplitUses(string text)
     {
         var cleaned = Regex.Replace(text ?? "", @"^\s*\d+\.\s*", "");
