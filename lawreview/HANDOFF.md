@@ -336,7 +336,7 @@ HTML이라 Ctrl+P로 되지만 인쇄용 CSS가 없다. 검토서와 같은 페�
 
 ```
 저장소 bomi940718/seoul의 브랜치 claude/korean-law-review-automation-fkmgrh에서 진행 중인
-프로젝트를 이어서 개발해줘. 로컬은 C:Toolsseoul 에 이미 clone되어 있어.
+프로젝트를 이어서 개발해줘. 로컬은 C:\Tools\seoul 에 이미 clone되어 있어. 먼저 git pull 해줘.
 
 [중요 — 코드가 이미 존재함. 처음부터 만들지 마]
 먼저 아래 3개를 반드시 읽고 그 위에서 이어가:
@@ -347,7 +347,7 @@ HTML이라 Ctrl+P로 되지만 인쇄용 CSS가 없다. 검토서와 같은 페�
 [현재 구조]
 C# 엔진(LawReview.Core) + 로컬 웹호스트(LawReview.Web, HTML 화면) +
 WebView2 셸(LawReview.App). 인터넷 없이 동작하고 배포는 exe 하나.
-테스트 65건이 엔진을 지킨다. 실행: dotnet run --project lawreview/src/LawReview.App
+테스트 97건이 엔진을 지킨다. 실행: dotnet run --project lawreview/src/LawReview.App
 
 [완료된 것]
 법제처 실 API 검증, 주소 자동조회(VWorld: 지역지구·대지면적·지목·지자체),
@@ -362,6 +362,8 @@ HTML 화면 7개 탭(설계개요~장별 상세검토), 검토 2단계 분리(�
 - 조례 조문번호 하드코딩 금지(제목 키워드 탐색)
 - **검토서 항목 순서·표 구성은 8년 쓴 실무 표준이다. 임의로 바꾸지 마**
 - 도면(지구단위계획 지침도) 규제는 자동 판정하지 말고 "확인필요"
+- **법 위계: 기초 조례 → 광역 조례 → 모법 → 모법 별표의 "그 밖의 용도"**
+  (주차장뿐 아니라 모든 법규에 적용. 법은 틀리면 안 된다)
 
 [이번 세션에서 할 일]
 HANDOFF.md 6절(다음 작업)에서 이어서 진행해줘.
