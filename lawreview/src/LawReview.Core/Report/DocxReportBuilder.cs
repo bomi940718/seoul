@@ -176,8 +176,10 @@ public sealed class DocxReportBuilder
             rows.Add(new[]
             {
                 row.Item.Title, basis,
-                row.CriterionText ?? "-",
-                row.CalculationText ?? row.Reason ?? "-",
+                FirstFilled(row.CriterionText),
+                // 산정식이 없는 항목은 판정 사유를 설계기준 칸에 적는다(실무 서식이 그렇다).
+                // 화면도 같은 순서로 보여주므로 사람이 산정식을 비우면 사유가 다시 올라온다.
+                FirstFilled(row.CalculationText, row.Reason),
                 row.Applicability.ToString(),
             });
         }
@@ -226,6 +228,10 @@ public sealed class DocxReportBuilder
 
     private static string ResolveName(string lawName, ProjectInput p) =>
         ReviewEngine.ResolvePlaceholders(lawName, p);
+
+    /// <summary>비어 있지 않은 첫 값. 사람이 칸을 비우면 다음 칸으로 내려가도록 null이 아니라 공백까지 본다.</summary>
+    internal static string FirstFilled(params string?[] candidates) =>
+        candidates.FirstOrDefault(v => !string.IsNullOrWhiteSpace(v)) ?? "-";
 
     /// <summary>"48의2" → "제48조의2", "42" → "제42조". 별표 인용("-")은 빈 문자열.</summary>
     internal static string FormatArticleRef(string articleNo)

@@ -113,6 +113,27 @@ table.detail .reason{margin-top:6px;text-align:left;line-height:1.5}
 .v-해당없음{background:#eef0f3;color:#5a6270}
 .v-확인필요{background:#fdf0e3;color:#9a5b12}
 td.center{text-align:center;vertical-align:middle;padding:7px 4px}
+
+/* ── 판정 수정 ──
+   AI 판정은 틀릴 수 있으므로 판정·사유는 사람이 그 자리에서 고친다.
+   고친 항목은 한눈에 보이고(↺ 표시), 되돌리면 AI 판정으로 돌아간다. */
+.verdict-pick{border:1px solid transparent;border-radius:10px;padding:2px 4px 2px 8px;
+  font-family:inherit;font-size:11.5px;font-weight:600;cursor:pointer;appearance:none;text-align:center}
+.verdict-pick:hover{border-color:var(--line)}
+.verdict-pick:focus{outline:2px solid var(--accent);outline-offset:1px}
+td.verdict-cell{vertical-align:top;padding:7px 5px}
+.revert{display:none;margin-top:4px;border:0;background:transparent;color:var(--accent);
+  cursor:pointer;font-family:inherit;font-size:10.5px;padding:1px 4px;border-radius:4px}
+.revert:hover{background:var(--accent-soft)}
+tr.row-edited .revert{display:inline-block}
+tr.row-edited > td:first-child{box-shadow:inset 3px 0 0 var(--accent)}
+
+/* 편집 칸 — 설계개요와 같은 규칙(칸에 갇히지 않고 내용만큼 늘어난다) */
+.cell.edit{text-align:left;font-size:12px;line-height:1.6;white-space:pre-wrap;word-break:keep-all}
+.cell.edit.changed{background:var(--accent-soft);box-shadow:inset 0 0 0 1px var(--accent)}
+.cell.reason-edit{margin-top:5px;font-size:11.5px;color:#444}
+.reason-wrap{margin-top:6px;font-size:12px}
+.reason-wrap b{font-size:11.5px;color:var(--muted)}
 .cite{margin:0 0 8px;padding-left:10px;border-left:2px solid var(--line-soft)}
 .cite:last-child{margin-bottom:0}
 .cite-head{font-weight:600;font-size:12px;margin-bottom:2px}

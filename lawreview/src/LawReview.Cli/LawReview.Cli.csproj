@@ -9,8 +9,14 @@
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
 
+  <!-- 화면 호스트를 CLI에서 직접 띄우려면(개발 확인용 web 모드) ASP.NET 런타임이 필요하다. -->
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\LawReview.Core\LawReview.Core.csproj" />
+    <ProjectReference Include="..\LawReview.Web\LawReview.Web.csproj" />
   </ItemGroup>
 
 </Project>

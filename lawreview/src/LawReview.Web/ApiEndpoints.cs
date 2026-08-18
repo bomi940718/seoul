@@ -201,6 +201,10 @@ public static class ApiEndpoints
                     if (req.Project is not null) result = CloneWithProject(result, req.Project);
                 }
 
+                // 사람이 화면에서 고친 판정을 얹는다. 검토서에 나가는 것은 사람이 확정한 값이다.
+                var edited = JudgmentOverrides.CountApplied(result, req.Overrides);
+                result = JudgmentOverrides.Apply(result, req.Overrides);
+
                 var dir = string.IsNullOrWhiteSpace(req.Folder)
                     ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "법규검토서")
                     : req.Folder!;
@@ -214,7 +218,7 @@ public static class ApiEndpoints
                 var path = Path.Combine(dir, name + ".docx");
 
                 new DocxReportBuilder().Build(result, path);
-                return Results.Ok(new { ok = true, path, size = new FileInfo(path).Length });
+                return Results.Ok(new { ok = true, path, size = new FileInfo(path).Length, edited });
             }
             catch (Exception ex)
             {
@@ -417,6 +421,8 @@ public sealed record SettingsDto(string? MolegApiKey, string? ClaudeApiKey, stri
 
 public sealed record LookupDto(string? Address, string? PrimaryUse);
 
-public sealed record ReportRequest(ProjectInput? Project, string? Folder, string? FileName);
+/// <summary>검토서 저장 요청. Overrides는 화면에서 사람이 고친 판정·사유다(없으면 AI 판정 그대로).</summary>
+public sealed record ReportRequest(ProjectInput? Project, string? Folder, string? FileName,
+    List<JudgmentOverride>? Overrides);
 
 public sealed record OpenRequest(string Path);

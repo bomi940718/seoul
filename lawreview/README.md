@@ -25,10 +25,16 @@ lawreview/
 │  ├─ Ai/                     Claude 판정 (Anthropic Messages API)
 │  ├─ Report/                 검토서 DOCX 생성 (OpenXML)
 │  └─ checklists/standard.json  검토 항목 정의 (근거 법령·판정 방식)
-├─ src/LawReview.App/         WinForms 앱 (배포용 exe)
-│  └─ Modules/                탭 모듈 — IAppModule 구현으로 기능 추가 (추후 CAD 변환 등)
+├─ src/LawReview.Web/         화면 호스트 (Kestrel) + 엔진 호출 API
+│  └─ wwwroot/                화면 HTML·CSS·JS (검토서와 같은 표. exe에 내장된다)
+├─ src/LawReview.App/         배포용 exe — WebView2 창으로 위 화면을 띄우는 셸
+│  └─ Modules/                예전 WinForms 화면 (--winforms 로 실행)
+├─ src/LawReview.Cli/         개발·검증용 콘솔 러너 (배포 대상 아님)
 └─ tests/LawReview.Core.Tests/  실제 실무 검토서(둔곡, 2023) 수치 기반 검증
 ```
+
+실행 파일(`LawReview.App.exe`)은 `C:\Tools\lawreview-dist\`에 두고 쓴다. 이 저장소는 소스이고,
+`build-exe.bat`이 게시 후 그 폴더로 복사한다 — 자세한 역할 구분은 [HANDOFF.md](HANDOFF.md) 4절.
 
 ## 검토서 생성 흐름
 
@@ -44,10 +50,20 @@ lawreview/
 
 ```bash
 dotnet test                      # 엔진 테스트
-dotnet build src/LawReview.App   # WinForms 앱 빌드
+dotnet run --project src/LawReview.App          # 앱 실행 (WebView2 창)
+dotnet run --project src/LawReview.Cli -- --web 5099   # 화면만 브라우저로 (HTML 고칠 때)
 ```
 
+`--web` 모드는 화면 파일을 저장소의 `src/LawReview.Web/wwwroot`에서 **직접** 읽으므로
+고치고 새로고침하면 바로 보인다. 배포 exe는 화면을 어셈블리에 내장하므로 다시 빌드해야 반영된다.
+
 협력체 배포용 단일 exe (Windows):
+
+```bash
+build-exe.bat        # 테스트 → 게시 → C:\Tools\lawreview-dist 로 복사까지
+```
+
+또는 직접:
 
 ```bash
 dotnet publish src/LawReview.App -c Release -r win-x64 --self-contained \
@@ -76,4 +92,7 @@ dotnet publish src/LawReview.App -c Release -r win-x64 --self-contained \
       앱 "자동조회" 버튼으로 지역/지구 입력란 채움 (이름 색인만, 개략 검토 내용 인용 안 함 — 원칙 2)
 - [x] 5단계: 배포 — 자가포함 단일 exe(체크리스트 내장, 약 70MB), 협력체 안내([DEPLOY.md](DEPLOY.md)),
       빌드 스크립트([build-exe.bat](build-exe.bat)). AI 판정은 Claude 키 없이도 "확인필요"로 진행 가능
-- [ ] 이후: 토지이용계획확인원 CAD 변환 모듈 (IAppModule로 탭 추가)
+- [x] 6단계: HTML 화면 전환(검토서와 같은 표), 검토 2단계 분리(기본/장별 상세),
+      법 위계 자동조회(건폐율·용적률·주차·조경), **AI 판정을 사람이 고쳐 검토서로 내보내기**
+- [ ] 이후: 남은 법규에 법 위계 적용, 인쇄용 서식, 용도변경 검토기,
+      토지이용계획확인원 CAD 변환 모듈

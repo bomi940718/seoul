@@ -17,20 +17,31 @@ namespace LawReview.Web;
 /// </summary>
 public static class WebHostRunner
 {
-    /// <summary>비어 있는 로컬 포트에서 호스트를 띄우고 접속 주소를 돌려준다.</summary>
-    public static async Task<(WebApplication App, string Url)> StartAsync(CancellationToken ct = default)
+    /// <summary>
+    /// 로컬 포트에서 호스트를 띄우고 접속 주소를 돌려준다.
+    /// fixedPort를 주지 않으면 비어 있는 포트를 골라 쓴다(앱 실행 시 기본).
+    /// </summary>
+    /// <param name="wwwrootPath">
+    /// 개발용. 화면 파일을 이 폴더에서 읽는다(지정하지 않으면 어셈블리에 내장된 사본).
+    /// 배포된 exe는 내장 사본을 쓰므로 <b>화면을 고쳐도 다시 빌드하기 전에는 반영되지 않는다</b> —
+    /// 개발 중에 그 함정을 피하려고 있는 통로다 (LawReview.Cli --web).
+    /// </param>
+    public static async Task<(WebApplication App, string Url)> StartAsync(
+        CancellationToken ct = default, int? fixedPort = null, string? wwwrootPath = null)
     {
-        var port = FindFreePort();
+        var port = fixedPort ?? FindFreePort();
         var builder = WebApplication.CreateBuilder();
         builder.Logging.ClearProviders();
         builder.WebHost.UseUrls($"http://127.0.0.1:{port}");
 
         var app = builder.Build();
 
-        // wwwroot를 어셈블리 내장 리소스에서 제공한다(단일 exe 배포 대응).
-        var embedded = new ManifestEmbeddedFileProvider(Assembly.GetExecutingAssembly(), "wwwroot");
-        app.UseDefaultFiles(new DefaultFilesOptions { FileProvider = embedded });
-        app.UseStaticFiles(new StaticFileOptions { FileProvider = embedded });
+        // wwwroot는 기본적으로 어셈블리 내장 리소스에서 제공한다(단일 exe 배포 대응).
+        IFileProvider files = wwwrootPath is { Length: > 0 } dir && Directory.Exists(dir)
+            ? new PhysicalFileProvider(Path.GetFullPath(dir))
+            : new ManifestEmbeddedFileProvider(Assembly.GetExecutingAssembly(), "wwwroot");
+        app.UseDefaultFiles(new DefaultFilesOptions { FileProvider = files });
+        app.UseStaticFiles(new StaticFileOptions { FileProvider = files });
 
         ApiEndpoints.Map(app);
 

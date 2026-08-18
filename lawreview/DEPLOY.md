@@ -25,6 +25,10 @@ dotnet publish src/LawReview.App -c Release -r win-x64 --self-contained ^
 결과물: `src/LawReview.App/bin/Release/net8.0-windows/win-x64/publish/LawReview.App.exe`
 (약 70MB, .NET 런타임 포함 — 받는 사람은 아무것도 설치할 필요 없음)
 
+`build-exe.bat`은 게시한 exe를 **평소 쓰는 실행 폴더 `C:\Tools\lawreview-dist\`로 바로 복사**합니다.
+(다른 폴더에 두려면 `build-exe.bat D:\어딘가`, 복사하지 않으려면 `build-exe.bat -`)
+앱이 실행 중이면 복사가 막히므로 먼저 닫고 실행하세요.
+
 - **`LawReview.App.exe` 파일 하나만** 협력체에 전달하면 됩니다. 체크리스트는 exe에 내장돼 있어
   별도 파일이 필요 없습니다. (같은 폴더에 `checklists\standard.json`을 두면 그 파일이 우선 적용되므로,
   현장별로 검토 항목을 커스터마이즈하고 싶을 때만 함께 배포하세요.)

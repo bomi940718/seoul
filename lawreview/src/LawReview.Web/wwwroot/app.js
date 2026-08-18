@@ -34,7 +34,12 @@ const state = {
   ],
   values: {},   // key -> { before, plan, after, legal, basis }
   floors: [],   // { bldg, floor, use, excl, common, exclude }
+  // 사람이 고친 판정. 항목Id -> { verdict, reason, criterion, calculation }
+  // AI 판정(state.result)은 원본 그대로 두고 여기에만 덮어쓴다 → 언제든 되돌릴 수 있다.
+  edits: {},
 };
+
+const VERDICTS = ["적용", "해당없음", "확인필요"];
 
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
@@ -528,6 +533,117 @@ function buildProjectPayload() {
   };
 }
 
+// ── 판정 수정 ────────────────────────────────────────────────
+// AI 판정은 틀릴 수 있고, 검토서에 서명하는 것은 사람이다.
+// 그래서 화면의 판정·사유는 전부 사람이 고칠 수 있어야 하고, 고친 값이 검토서로 나가야 한다.
+// 인용 조문(법제처 원문)만은 고칠 수 없다 — 원문을 사람이 손대면 인용의 의미가 없어진다.
+const edit = (id) => state.edits[id] || {};
+const isEdited = (id) => Object.keys(edit(id)).length > 0;
+const editCount = () => Object.keys(state.edits).length;
+
+/// 화면에 보일 값. 사람이 고쳤으면 그 값, 아니면 AI 판정 값.
+function shownValue(x, field) {
+  const e = edit(x.id);
+  return e[field] !== undefined ? e[field] : (x[field] ?? "");
+}
+
+/// 이 칸이 실제로 무엇을 고치는지 정한다 — **보이는 것을 고친다**가 원칙.
+/// 설계기준(산정식) 칸은 산정식이 없으면 판정 사유가 대신 보이고(실무 서식이 그렇다,
+/// 검토서 DOCX도 같은 순서로 적는다), 그때 이 칸을 고치면 사유를 고치는 것이다.
+function boundField(x, field, fallback) {
+  return fallback && !shownValue(x, field) ? fallback : field;
+}
+
+/// 판정 칸. 고른 즉시 반영되고, 고친 항목은 ↺로 AI 판정으로 되돌릴 수 있다.
+function verdictHtml(x) {
+  const v = shownValue(x, "verdict") || x.verdict;
+  const opts = VERDICTS.map((o) => `<option value="${o}"${o === v ? " selected" : ""}>${o}</option>`).join("");
+  return `<select class="verdict-pick v-${v}" data-edit-id="${x.id}" data-edit-field="verdict">${opts}</select>
+    <button class="revert" data-revert="${x.id}" title="AI 판정으로 되돌리기">수정됨 ↺</button>`;
+}
+
+/// 편집 가능한 텍스트 칸. 설계개요와 같은 방식 — 칸에 갇히지 않고 내용만큼 늘어난다.
+function editCell(x, field, opt = {}) {
+  const bound = boundField(x, field, opt.fallback);
+  const changed = edit(x.id)[bound] !== undefined ? " changed" : "";
+  return `<div class="cell edit${changed} ${opt.cls || ""}" contenteditable="true"
+    data-edit-id="${x.id}" data-edit-field="${bound}"
+    data-ph="${opt.ph || "(비어 있음)"}">${esc(shownValue(x, bound))}</div>`;
+}
+
+// 어느 표의 판정이든 여기서 한 번에 받는다(행을 다시 그려도 계속 동작한다).
+document.addEventListener("change", (e) => {
+  const el = e.target.closest?.("select[data-edit-id]");
+  if (el) applyEdit(el.dataset.editId, el.dataset.editField, el.value);
+});
+
+// blur는 버블링되지 않으므로 캡처 단계에서 받는다.
+document.addEventListener("blur", (e) => {
+  const el = e.target.closest?.(".cell.edit[data-edit-id]");
+  if (el) applyEdit(el.dataset.editId, el.dataset.editField, cellText(el));
+}, true);
+
+document.addEventListener("click", (e) => {
+  const btn = e.target.closest?.("[data-revert]");
+  if (!btn) return;
+  delete state.edits[btn.dataset.revert];
+  if (state.result) renderResult(state.result);   // 되돌리기는 편집 중이 아니므로 다시 그려도 안전
+  autosave();
+  status(editCount() ? `판정 ${editCount()}건 수정됨` : "AI 판정으로 되돌렸습니다.");
+});
+
+function applyEdit(id, field, value) {
+  if (!id) return;
+  const row = findResultRow(id);
+  const original = row?.[field] ?? "";
+  const e = (state.edits[id] ||= {});
+  if (value === original) delete e[field];      // 원래 값으로 되돌려 놓으면 수정이 아니다
+  else e[field] = value;
+  if (Object.keys(e).length === 0) delete state.edits[id];
+  refreshEditMarks(id);
+  autosave();
+  status(editCount() ? `판정 ${editCount()}건 수정됨 — 검토서 저장 시 반영됩니다.` : "준비됨");
+}
+
+/// 표를 통째로 다시 그리면 지금 편집 중인 칸이 사라져 탭 이동이 끊긴다.
+/// 그래서 고친 항목의 표시(색·되돌리기 버튼)만 손본다.
+function refreshEditMarks(id) {
+  const row = findResultRow(id);
+  for (const el of $$("[data-edit-id]")) {
+    if (el.dataset.editId !== id) continue;
+    el.closest("tr")?.classList.toggle("row-edited", isEdited(id));
+    if (el.tagName === "SELECT") { el.className = "verdict-pick v-" + el.value; continue; }
+    el.classList.toggle("changed", edit(id)[el.dataset.editField] !== undefined);
+    // 같은 값을 보여주는 칸이 여러 곳(상세검토 표와 지구단위계획 표 등)이면 함께 맞춘다.
+    if (row && document.activeElement !== el) {
+      const shown = shownValue(row, el.dataset.editField);
+      if (cellText(el) !== shown) el.textContent = shown;
+    }
+  }
+}
+
+// contenteditable은 공백을 nbsp로 바꾸고 줄바꿈을 요소로 넣는다 — 평문으로 되돌린다.
+const cellText = (el) => el.innerText.replace(/ /g, " ").replace(/\r/g, "").trim();
+
+/// 결과 안에서 항목 하나를 찾는다(표마다 흩어져 있어 전부 훑는다).
+function findResultRow(id) {
+  const r = state.result;
+  if (!r) return null;
+  const pools = [r.summary, r.cert, r.district, r.site, ...(r.details || []).map((g) => g.items)];
+  for (const pool of pools) {
+    const hit = (pool || []).find((x) => x.id === id);
+    if (hit) return hit;
+  }
+  return null;
+}
+
+/// 검토서 저장 시 서버로 보낼 수정 목록. 결과에 없는 항목(예전 검토의 잔재)은 빼고 보낸다.
+function overridePayload() {
+  return Object.entries(state.edits)
+    .filter(([id]) => findResultRow(id))
+    .map(([id, e]) => ({ id, ...e }));
+}
+
 // ── 결과 렌더 (검토서 p4~p7) ─────────────────────────────────
 function renderResult(res) {
   // p4 검토법규
@@ -535,12 +651,13 @@ function renderResult(res) {
     <td class="center">${esc(l.effectiveDate)}</td><td></td></tr>`, 3);
 
   // p5 요약 / p6 인증 — 같은 5열 구성
-  const sumRow = (x) => `<tr>
+  // 법적기준·설계기준(산정식)·판정·사유는 고칠 수 있다. 대상(근거 조문)은 인용이므로 읽기 전용.
+  const sumRow = (x) => `<tr class="${isEdited(x.id) ? "row-edited" : ""}">
     <td class="body-cell">${esc(x.title)}</td>
     <td class="body-cell sub">${esc(x.basis)}</td>
-    <td class="body-cell">${esc(x.criterion)}</td>
-    <td class="body-cell">${esc(x.calculation || x.reason)}</td>
-    <td class="center"><span class="verdict v-${x.verdict}">${x.verdict}</span></td></tr>`;
+    <td>${editCell(x, "criterion", { ph: "법적 기준" })}</td>
+    <td>${editCell(x, "calculation", { fallback: "reason", ph: "산정식 또는 판정 사유" })}</td>
+    <td class="center verdict-cell">${verdictHtml(x)}</td></tr>`;
   fill("#summaryBody", res.summary, sumRow, 5);
   fill("#certBody", res.cert, sumRow, 5);
 
@@ -565,14 +682,14 @@ function renderDetails(details) {
     div.className = "detail-group";
     const rows = g.items.map((x) => {
       const cites = x.citations?.length ? x.citations : [null];
-      return cites.map((c, i) => `<tr class="${i === 0 ? "item-start" : "cite-row"}">
+      const cls = (i) => (i === 0 ? "item-start" : "cite-row") + (isEdited(x.id) ? " row-edited" : "");
+      return cites.map((c, i) => `<tr class="${cls(i)}">
         ${i === 0 ? `<td class="body-cell item-name" rowspan="${cites.length}">${esc(x.title)}</td>` : ""}
         <td class="body-cell law-name">${c ? esc(c.law) + " " + esc(c.article) : "-"}
           ${c?.effectiveDate ? `<div class="sub">[시행 ${esc(c.effectiveDate)}]</div>` : ""}</td>
-        <td class="body-cell">${c ? esc(c.body) : esc(x.reason || "")}</td>
-        ${i === 0 ? `<td class="center" rowspan="${cites.length}">
-            <span class="verdict v-${x.verdict}">${x.verdict}</span>
-            ${x.reason ? `<div class="sub reason">${esc(x.reason)}</div>` : ""}</td>` : ""}
+        <td class="body-cell">${c ? esc(c.body) : esc(shownValue(x, "reason"))}</td>
+        ${i === 0 ? `<td class="center verdict-cell" rowspan="${cites.length}">${verdictHtml(x)}
+            ${editCell(x, "reason", { cls: "reason-edit", ph: "판정 사유" })}</td>` : ""}
       </tr>`).join("");
     }).join("");
     div.innerHTML = `<h3>${esc(g.section)}</h3>` +
@@ -583,19 +700,20 @@ function renderDetails(details) {
   }
 }
 
-const detailRows = (x) => `<tr>
+const detailRows = (x) => `<tr class="${isEdited(x.id) ? "row-edited" : ""}">
   <td class="body-cell">${esc(x.title)}</td>
   <td class="body-cell sub">${x.citations.map((c) => esc(c.law + " " + c.article)).join("<br>")}</td>
   <td class="body-cell">${citeHtml(x)}</td>
-  <td class="center"><span class="verdict v-${x.verdict}">${x.verdict}</span></td></tr>`;
+  <td class="center verdict-cell">${verdictHtml(x)}</td></tr>`;
 
+/// 인용 조문은 법제처 원문이라 읽기 전용이고, 그 아래 판정 사유만 고칠 수 있다.
 function citeHtml(x) {
   const cites = (x.citations || []).map((c) => `<div class="cite">
       <div class="cite-head">${esc(c.law)} ${esc(c.article)}${c.articleTitle ? "(" + esc(c.articleTitle) + ")" : ""}
         ${c.effectiveDate ? `<span class="sub">[시행 ${esc(c.effectiveDate)}]</span>` : ""}</div>
       <div class="cite-body">${esc(c.body)}</div></div>`).join("");
-  const reason = x.reason ? `<div class="cite-body" style="margin-top:6px"><b>판정 사유</b> — ${esc(x.reason)}</div>` : "";
-  return cites + reason;
+  return cites + `<div class="reason-wrap"><b>판정 사유</b>
+    ${editCell(x, "reason", { cls: "reason-edit", ph: "판정 사유" })}</div>`;
 }
 
 function fill(sel, items, rowFn, cols) {
@@ -614,11 +732,13 @@ $("#btnReport").addEventListener("click", async () => {
   status("검토서 생성 중…");
   const r = await fetch("/api/report", {
     method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ project: payload }),
+    // overrides = 화면에서 사람이 고친 판정. 검토서에는 이 값이 나간다.
+    body: JSON.stringify({ project: payload, overrides: overridePayload() }),
   });
   const d = await r.json();
   if (!d.ok) { status("검토서 저장 실패: " + d.message); return; }
-  status(`검토서 저장됨 — ${d.path} (${(d.size / 1024).toFixed(0)} KB)`);
+  status(`검토서 저장됨 — ${d.path} (${(d.size / 1024).toFixed(0)} KB)` +
+    (d.edited ? ` · 수정한 판정 ${d.edited}건 반영` : ""));
   if (confirm(`검토서를 저장했습니다.\n${d.path}\n\n지금 열까요?`)) {
     await fetch("/api/report/open", {
       method: "POST", headers: { "Content-Type": "application/json" },
@@ -636,7 +756,7 @@ function snapshot() {
   return {
     version: 1, savedAt: new Date().toISOString(),
     mode: state.mode, project: state.project, values: state.values,
-    floors: state.floors, result: state.result || null,
+    floors: state.floors, result: state.result || null, edits: state.edits,
   };
 }
 
@@ -647,6 +767,7 @@ function restore(s) {
   state.values = s.values || {};
   state.floors = s.floors || [];
   state.result = s.result || null;
+  state.edits = s.edits || {};
   document.body.dataset.mode = state.mode;
   $$(".mode").forEach((b) => b.classList.toggle("active", b.dataset.mode === state.mode));
   renderScaleTable();

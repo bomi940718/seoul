@@ -3,10 +3,27 @@ using LawReview.Core.LawApi;
 using LawReview.Core.Models;
 using LawReview.Core.Report;
 using LawReview.Core.Review;
+using Microsoft.Extensions.Hosting;
 
 // 개발·검증용 콘솔 러너 — 둔곡 프로젝트(실무 검토서의 검증 기준)로 전체 파이프라인을 실행한다.
 //   사용법: dotnet run --project src/LawReview.Cli -- <OC키> [출력.docx]
 //   Claude 키(환경변수 ANTHROPIC_API_KEY)가 없으면 AI 판정은 "확인필요"로 두고 조문 인용만 검증한다.
+
+// --web [포트]: 화면(HTML)을 로컬 호스트로 띄운다. WebView2 없이 브라우저로 화면을 확인할 때 쓴다.
+//   dotnet run --project src/LawReview.Cli -- --web 5099   → http://127.0.0.1:5099
+//   화면 파일은 저장소의 wwwroot에서 직접 읽는다 — 고치고 새로고침하면 바로 보인다(빌드 불필요).
+if (args.Length >= 1 && args[0] == "--web")
+{
+    var webPort = args.Length >= 2 && int.TryParse(args[1], out var p) ? p : 5099;
+    var wwwroot = FindRepoDir(Path.Combine("src", "LawReview.Web", "wwwroot"));
+    var (webApp, webUrl) = await LawReview.Web.WebHostRunner.StartAsync(fixedPort: webPort, wwwrootPath: wwwroot);
+    Console.WriteLine($"화면 호스트 실행 중: {webUrl}   (Ctrl+C로 종료)");
+    Console.WriteLine(wwwroot is null
+        ? "화면 파일: 어셈블리 내장본 (저장소 wwwroot를 못 찾음 — 고쳐도 다시 빌드해야 반영됨)"
+        : $"화면 파일: {wwwroot}");
+    await webApp.WaitForShutdownAsync();
+    return 0;
+}
 
 // --districtplan <키워드>: 서울도시공간포털 지구단위계획 실조회만 단독 실행 (OC 키 불필요)
 if (args.Length >= 2 && args[0] == "--districtplan")
@@ -167,3 +184,16 @@ static string FindRepoFile(string relative)
     throw new FileNotFoundException(relative);
 }
 
+
+/// <summary>개발 중에만 쓰는 경로 찾기 — 실행 폴더에서 위로 올라가며 저장소 폴더를 찾는다.</summary>
+static string? FindRepoDir(string relative)
+{
+    var dir = new DirectoryInfo(AppContext.BaseDirectory);
+    while (dir is not null)
+    {
+        var candidate = Path.Combine(dir.FullName, relative);
+        if (Directory.Exists(candidate)) return candidate;
+        dir = dir.Parent!;
+    }
+    return null;
+}

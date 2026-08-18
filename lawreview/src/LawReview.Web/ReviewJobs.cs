@@ -20,6 +20,8 @@ public sealed class ReviewJob
     public string? Error { get; set; }
     public ReviewResult? Result { get; set; }
     public int Total { get; set; }
+    /// <summary>끝난 시각. 기본 검토와 상세검토를 합칠 때 어느 쪽이 최신인지 가리는 기준.</summary>
+    public DateTime? FinishedAt { get; set; }
 }
 
 public static class ReviewJobs
@@ -75,6 +77,7 @@ public static class ReviewJobs
             }
             finally
             {
+                job.FinishedAt = DateTime.UtcNow;
                 job.Done = true;
             }
         });
@@ -84,10 +87,16 @@ public static class ReviewJobs
 
     public static ReviewJob? Get(string id) => Jobs.TryGetValue(id, out var j) ? j : null;
 
-    /// <summary>가장 최근에 끝난 검토 결과(검토서 저장에 쓴다).</summary>
+    /// <summary>
+    /// 끝난 검토 결과를 전부 합쳐서 돌려준다(검토서 저장에 쓴다).
+    /// 기본 검토와 장별 상세는 따로 돌리므로 마지막 작업 하나만 쓰면 검토서에서 한쪽이 통째로 빠진다.
+    /// </summary>
     public static ReviewResult? LatestResult() =>
-        Jobs.Values.Where(j => j.Done && j.Result is not null)
-            .Select(j => j.Result!).LastOrDefault();
+        ReviewResults.Merge(Jobs.Values
+            .Where(j => j.Result is not null && j.FinishedAt is not null)
+            .OrderBy(j => j.FinishedAt!.Value)
+            .Select(j => j.Result!)
+            .ToList());
 
     /// <summary>검토 결과를 화면 탭 구성에 맞게 변환한다(검토서 p4~p7 순서).</summary>
     public static object ToView(ReviewResult r)
@@ -131,6 +140,8 @@ public static class ReviewJobs
 
     private static object ToSummaryRow(ReviewRow x) => new
     {
+        // id는 화면에서 고친 판정을 되돌려 보낼 때의 열쇠다 (제목은 서식이 바뀌면 어긋난다)
+        id = x.Item.Id,
         title = x.Item.Title,
         // 요약표의 "대상"은 최종 적용 근거 하나만 적는다(표준 서식).
         // 적용 우선순위: 지구단위계획 > 조례 > 시행령·규칙 > 법령
@@ -143,6 +154,7 @@ public static class ReviewJobs
 
     private static object ToDetailRow(ReviewRow x) => new
     {
+        id = x.Item.Id,
         title = x.Item.Title,
         verdict = x.Applicability.ToString(),
         reason = x.Reason ?? "",
