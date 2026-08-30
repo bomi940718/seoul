@@ -216,8 +216,8 @@ public static class ParkingStandardResolver
     }
 }
 
-/// <summary>조례 별표 하나(위계 순서대로 넘긴다).</summary>
-public sealed record OrdinanceAnnex(string Name, string Link, IReadOnlyList<string> Lines);
+/// <summary>조례 별표 하나(위계 순서대로 넘긴다). 여러 법규 해석기가 함께 쓴다.</summary>
+public sealed record OrdinanceAnnex(string Name, string Link, IReadOnlyList<string> Lines, string EffectiveDate = "");
 
 /// <summary>부설주차장 설치기준 조회 결과. 못 찾으면 AreaPerSpace가 null.</summary>
 public sealed class ParkingStandard

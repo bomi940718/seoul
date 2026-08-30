@@ -233,6 +233,42 @@ public sealed class MolegClient
         return ParseAnnexSearch(doc.RootElement);
     }
 
+    /// <summary>
+    /// 자치법규 별표 검색 (target=ordinbyl, search=2 = 자치법규명으로 검색).
+    ///
+    /// **본문 조회(LawText.Annexes)에 별표가 하나도 없는 조례가 있다**(서울특별시 건축 조례가 그렇다).
+    /// 그런 조례는 이 검색으로만 별표 파일에 닿을 수 있으므로, 본문에 별표가 없을 때의 보완 경로다.
+    /// 결과에는 다른 지자체의 같은 이름 조례도 섞이므로 호출부에서 자치법규명을 확인해야 한다.
+    /// </summary>
+    public async Task<IReadOnlyList<AnnexSummary>> SearchOrdinanceAnnexesAsync(
+        string ordinanceName, CancellationToken ct = default)
+    {
+        using var doc = await GetJsonAsync(BuildOrdinanceAnnexSearchUri(ordinanceName), ct);
+        return ParseAnnexSearch(doc.RootElement);
+    }
+
+    /// <summary>
+    /// 별표 첨부(HWP)를 받아 본문 줄을 뽑는다. 자치법규 별표는 내용이 API에 없고 이 파일에만 있다.
+    ///
+    /// **User-Agent가 없으면 HWP 대신 안내 HTML이 온다** — 법제처 flDownload의 동작이다.
+    /// HttpClient에 UA를 지정해 두지 않으면 조용히 빈 결과가 되어 기준이 모법으로 떨어지므로,
+    /// 여기서도 HWP가 아니면 빈 목록을 돌려주고 호출부가 다음 위계로 내려가게 한다.
+    /// </summary>
+    public async Task<IReadOnlyList<string>> DownloadAnnexTextAsync(string? link, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(link)) return Array.Empty<string>();
+        try
+        {
+            var bytes = await _http.GetByteArrayAsync(link, ct);
+            return HwpTextExtractor.LooksLikeHwp(bytes) ? HwpTextExtractor.ExtractLines(bytes) : Array.Empty<string>();
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or InvalidOperationException
+                                   && !ct.IsCancellationRequested)
+        {
+            return Array.Empty<string>();
+        }
+    }
+
     internal static IReadOnlyList<AnnexSummary> ParseAnnexSearch(JsonElement root)
     {
         var results = new List<AnnexSummary>();
@@ -251,7 +287,9 @@ public sealed class MolegClient
                     ? FormatBranchedNumber(rawNo[..4], rawNo[4..])
                     : rawNo.TrimStart('0');
                 results.Add(new AnnexSummary(
-                    LawName: GetString(item, "관련법령명") ?? GetString(item, "법령명") ?? "",
+                    // 자치법규 별표(ordinbyl)의 관련자치법규명에는 검색어 강조용 <strong> 태그가 섞여 온다.
+                    LawName: StripTags(GetString(item, "관련법령명") ?? GetString(item, "법령명")
+                                       ?? GetString(item, "관련자치법규명") ?? ""),
                     Name: GetString(item, "별표명") ?? "",
                     Number: number,
                     Kind: GetString(item, "별표종류") ?? "별표",
@@ -264,9 +302,16 @@ public sealed class MolegClient
     private static string AbsoluteLink(string link) =>
         link.StartsWith('/') ? "https://www.law.go.kr" + link : link;
 
+    internal static string StripTags(string s) =>
+        System.Text.RegularExpressions.Regex.Replace(s, "<[^>]*>", "");
+
     internal Uri BuildAnnexSearchUri(string lawName) =>
         new($"{BaseUrl}/lawSearch.do?OC={Uri.EscapeDataString(_oc)}&target=licbyl" +
             $"&type=JSON&display=100&search=2&query={Uri.EscapeDataString(lawName)}");
+
+    internal Uri BuildOrdinanceAnnexSearchUri(string ordinanceName) =>
+        new($"{BaseUrl}/lawSearch.do?OC={Uri.EscapeDataString(_oc)}&target=ordinbyl" +
+            $"&type=JSON&display=100&search=2&query={Uri.EscapeDataString(ordinanceName)}");
 
     internal Uri BuildSearchUri(string query, LawTarget target) =>
         new($"{BaseUrl}/lawSearch.do?OC={Uri.EscapeDataString(_oc)}&target={TargetCode(target)}" +

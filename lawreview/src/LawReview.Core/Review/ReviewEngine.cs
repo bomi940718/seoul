@@ -1,3 +1,4 @@
+using System.Text;
 using LawReview.Core.Ai;
 using LawReview.Core.LawApi;
 using LawReview.Core.Models;
@@ -78,8 +79,11 @@ public sealed class ReviewEngine
                 }
 
                 if (basis.Annex is string annexName)
-                    row.Citations.Add(await GetAnnexCitationAsync(lawText, lawName, annexName, ct));
+                    row.Citations.Add(await GetAnnexCitationAsync(lawText, lawName, annexName, project, ct));
             }
+
+            // 1-b) 별표에 값이 있는 항목은 법 위계대로 조례 별표까지 내려가 실제 기준을 붙인다.
+            if (item.Id == "setback") await EnrichSetbackAsync(row, project, ct);
 
             // 2) 판정.
             switch (item.Judgment)
@@ -186,11 +190,20 @@ public sealed class ReviewEngine
     /// 본문 조회에 딸려온 별표 목록을 우선 쓰고(일부 법령은 별표 검색 색인에 없음), 없으면 별표 검색으로 보완한다.
     /// </summary>
     private async Task<CitedArticle> GetAnnexCitationAsync(LawText lawText, string lawName, string annexName,
-        CancellationToken ct)
+        ProjectInput project, CancellationToken ct)
     {
         if (lawText.FindAnnex(annexName) is Annex annex)
+        {
+            // 법령 별표는 본문 텍스트가 함께 온다 — 링크만 인용하면 판정이 근거 없이 이뤄지므로
+            // 원문을 인용에 담는다. 다만 별표 전문이 수만 자인 경우가 있어(편의증진법 시행령 별표 2)
+            // 해당 용도 항목만 발췌하고, 발췌 사실과 원문 링크를 함께 남긴다.
+            var excerpt = AnnexText.ExcerptForUse(annex.Content, project.PrimaryUse);
+            var body = excerpt.Length > 0
+                ? $"{excerpt}\n\n(원문: {annex.Link})"
+                : $"별표 내용은 원문 파일을 확인하세요: {annex.Link}";
             return new CitedArticle(lawText.Name, "-", $"[별표 {annex.Number}] {annex.Title}",
-                $"별표 내용은 원문 파일을 확인하세요: {annex.Link}", lawText.EffectiveDate);
+                body, lawText.EffectiveDate);
+        }
         try
         {
             var normalized = annexName.Replace(" ", "").Replace("별표", "");
@@ -226,6 +239,92 @@ public sealed class ReviewEngine
         }
         _lawCache[lawName] = text;
         return text;
+    }
+
+    /// <summary>
+    /// 대지 안의 공지(건축법 제58조) 항목에 **실제 적용 이격거리**를 붙인다.
+    ///
+    /// 조례 조문은 "…기준은 별표 3과 같다"로 끝나 그것만 인용하면 숫자가 하나도 없다.
+    /// 값은 조례 별표(HWP)에 있으므로 법 위계대로 **기초 조례 → 광역 조례 → 건축법 시행령 별표 2**
+    /// 순으로 내려가며 표를 읽는다(<see cref="SetbackStandardResolver"/>).
+    ///
+    /// 판정은 하지 않는다 — 표의 각 행에 "산업단지에 건축하는 공장은 제외한다" 같은 단서가 붙어
+    /// 용도명만으로 단정할 수 없다. 해당될 수 있는 행을 원문 그대로 인용해 AI·사람이 판단하게 한다.
+    /// </summary>
+    private async Task EnrichSetbackAsync(ReviewRow row, ProjectInput project, CancellationToken ct)
+    {
+        var ordinances = new List<OrdinanceAnnex>();
+        foreach (var authority in Municipality.OrdinanceHierarchy(project.Province, project.City))
+        {
+            var name = $"{authority} 건축 조례";
+            var ordinance = await GetLawCachedAsync(name, LawTarget.Ordinance, ct);
+            if (ordinance is null) continue;
+
+            // 조례 별표는 한 HWP에 [별표 1]…[별표 N]이 모두 들어 있기도 하고 별표마다 파일이 따로이기도 하다.
+            var lines = new List<string>();
+            string? source = null;
+            foreach (var link in await OrdinanceAnnexLinksAsync(ordinance, "공지 기준", ct))
+            {
+                var text = await _law.DownloadAnnexTextAsync(link, ct);
+                if (text.Count == 0) continue;
+                lines.AddRange(text);
+                source ??= link;
+            }
+            // 별표를 못 읽었어도 조례는 목록에 남긴다 — 어느 조례를 확인해야 하는지 알려야 하기 때문이다.
+            ordinances.Add(new OrdinanceAnnex(ordinance.Name, source ?? "", lines, ordinance.EffectiveDate));
+        }
+
+        var decree = await GetLawCachedAsync("건축법 시행령", LawTarget.Law, ct);
+        var standard = SetbackStandardResolver.ResolveChain(ordinances, decree);
+        var matched = standard.MatchedFor(project.PrimaryUse);
+        if (matched.Count == 0) return;
+
+        Report($"대지 안의 공지 기준: {standard.Basis}");
+        row.CriterionText = standard.CriterionText(project.PrimaryUse) ?? row.CriterionText;
+
+        var body = new StringBuilder();
+        foreach (var rule in matched) body.AppendLine(rule.Text);
+        if (matched.Any(r => r.HasProviso))
+            body.AppendLine("\n※ 각 행의 괄호 안 단서(제외 규정)에 해당하는지 확인해야 합니다.");
+        if (standard.Note is not null) body.AppendLine($"\n※ {standard.Note}");
+        if (standard.AnnexLink.Length > 0) body.AppendLine($"\n(원문: {standard.AnnexLink})");
+
+        row.Citations.Add(new CitedArticle(standard.SourceName, "-",
+            $"[{standard.AnnexLabel}] 대지 안의 공지 기준", body.ToString().TrimEnd(), standard.EffectiveDate));
+    }
+
+    /// <summary>
+    /// 조례 별표 파일 링크를 모은다.
+    /// 본문 조회에 별표가 딸려오면 그것을 쓰고, **하나도 없으면**(서울특별시 건축 조례가 그렇다)
+    /// 자치법규 별표 검색(ordinbyl)으로 보완한다. 검색 결과에는 다른 지자체 조례도 섞이므로
+    /// 자치법규명이 일치하는 것만 고른다.
+    /// </summary>
+    private async Task<IReadOnlyList<string>> OrdinanceAnnexLinksAsync(
+        LawText ordinance, string titleKeyword, CancellationToken ct)
+    {
+        var key = AnnexText.Normalize(titleKeyword);
+        var annexes = (ordinance.Annexes ?? Array.Empty<Annex>()).Where(a => a.Link.Length > 0).ToList();
+
+        // 별표 제목이 있으면 필요한 것만 받는다. 제목이 "별표"뿐인 조례(대전)는 전부 받아야 한다
+        // — 한 파일에 별표가 모두 들어 있기 때문이다.
+        var titled = annexes.Where(a => AnnexText.Normalize(a.Title).Contains(key)).ToList();
+        if (titled.Count > 0) return titled.Select(a => a.Link).Distinct().ToList();
+        if (annexes.Count > 0) return annexes.Select(a => a.Link).Distinct().ToList();
+
+        try
+        {
+            var name = ordinance.Name.Replace(" ", "");
+            var hits = (await _law.SearchOrdinanceAnnexesAsync(ordinance.Name, ct))
+                .Where(a => a.LawName.Replace(" ", "") == name && a.Link.Length > 0
+                            && !a.Name.StartsWith("삭제")).ToList();
+            var match = hits.Where(a => AnnexText.Normalize(a.Name).Contains(key)).ToList();
+            return (match.Count > 0 ? match : hits).Select(a => a.Link).Distinct().ToList();
+        }
+        catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException)
+        {
+            Report($"자치법규 별표 검색 실패: {ordinance.Name} — {ex.Message}");
+            return Array.Empty<string>();
+        }
     }
 
     /// <summary>
