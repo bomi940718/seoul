@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>법규검토서 생성기</title>
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">법규검토서 생성기</div>
+  <nav class="modes" id="modes">
+    <button class="mode active" data-mode="신축">신축</button>
+    <button class="mode" data-mode="리모델링">리모델링</button>
+    <button class="mode" data-mode="증축">증축</button>
+    <button class="mode" data-mode="용도변경">용도변경</button>
+  </nav>
+  <div class="spacer"></div>
+  <button class="btn ghost" id="btnOpen">불러오기</button>
+  <button class="btn ghost" id="btnSave">저장</button>
+  <button class="btn ghost" id="btnSettings">설정</button>
+  <button class="btn" id="btnRun">검토 실행</button>
+  <button class="btn ghost" id="btnReport">검토서 저장</button>
+</header>
+
+<nav class="tabs" id="tabs">
+  <button class="tab active" data-page="overview">설계개요</button>
+  <button class="tab" data-page="laws">검토법규</button>
+  <button class="tab" data-page="summary">요약 검토서</button>
+  <button class="tab" data-page="cert">인증 의무</button>
+  <button class="tab" data-page="district">지구단위계획 지침</button>
+  <button class="tab" data-page="site">해당 지번 주요 법규</button>
+  <button class="tab" data-page="detail">장별 상세검토</button>
+</nav>
+
+<main id="main">
+
+  <!-- ─────────── 설계개요 (검토서 p3) ─────────── -->
+  <section class="page active" id="page-overview">
+    <div class="sheet">
+      <h2 class="sheet-title">■ 설계개요</h2>
+
+      <table class="doc head">
+        <tbody>
+          <tr><th>사 업 명</th><td colspan="3"><div class="cell" data-field="projectName" contenteditable="true"></div></td></tr>
+          <tr><th>건 축 주</th><td colspan="3"><div class="cell" data-field="client" contenteditable="true"></div></td></tr>
+          <tr>
+            <th>대 지 위 치</th>
+            <td colspan="2"><div class="cell" data-field="siteAddress" contenteditable="true"></div></td>
+            <td class="act"><button class="btn sm" id="btnLookup">자동조회</button></td>
+          </tr>
+          <tr><th>지 역 / 지 구</th><td colspan="3"><div class="cell multi" data-field="useZones" contenteditable="true"></div></td></tr>
+          <tr>
+            <th>대 지 면 적<span class="unit">(m²)</span></th>
+            <td class="w-narrow"><div class="cell" data-field="landCategory" contenteditable="true" data-ph="지목"></div></td>
+            <td colspan="2"><div class="cell num" data-field="siteArea" contenteditable="true" data-ph="0.00"></div></td>
+          </tr>
+          <tr><th>용 도</th><td colspan="3"><div class="cell" data-field="primaryUse" contenteditable="true"></div></td></tr>
+          <tr class="opt-district">
+            <th>허 용 용 도</th>
+            <td colspan="2"><div class="cell multi" data-field="allowedUse" contenteditable="true"></div></td>
+            <td><div class="cell basis" data-field="allowedUseBasis" contenteditable="true" data-ph="근거"></div></td>
+          </tr>
+          <tr class="opt-district">
+            <th>불 허 용 도</th>
+            <td colspan="2"><div class="cell multi" data-field="disallowedUse" contenteditable="true"></div></td>
+            <td><div class="cell basis" data-field="disallowedUseBasis" contenteditable="true" data-ph="근거"></div></td>
+          </tr>
+        </tbody>
+      </table>
+
+      <table class="doc scale" id="scaleTable">
+        <thead>
+          <tr>
+            <th class="w-item">구 분</th>
+            <th class="col-before">변경전</th>
+            <th class="col-plan">계획</th>
+            <th class="col-after">변경후</th>
+            <th class="col-legal">법정</th>
+            <th class="w-basis">법 규</th>
+          </tr>
+        </thead>
+        <tbody id="scaleBody"><!-- app.js가 채운다 --></tbody>
+      </table>
+    </div>
+
+    <div class="sheet">
+      <div class="sheet-head">
+        <h2 class="sheet-title">■ 각 층별 면적표</h2>
+        <div class="sheet-tools">
+          <span class="hint-inline">엑셀에서 행을 복사해 붙여넣기(Ctrl+V) 가능 — 동/층/용도/전용/공용</span>
+          <button class="btn sm ghost" id="btnAddFloor">행 추가</button>
+        </div>
+      </div>
+      <table class="doc area" id="areaTable">
+        <thead>
+          <tr>
+            <th style="width:150px">동</th>
+            <th style="width:90px">층 별</th>
+            <th>용 도</th>
+            <th style="width:120px">전용 (㎡)</th>
+            <th style="width:120px">공용 (㎡)</th>
+            <th style="width:120px">합계 (㎡)</th>
+            <th style="width:110px">비 고</th>
+            <th style="width:44px"></th>
+          </tr>
+        </thead>
+        <tbody id="areaBody"></tbody>
+        <tfoot>
+          <tr>
+            <th colspan="5">용적률 산정용 연면적</th>
+            <td class="total" id="areaGross">-</td>
+            <td colspan="2" class="sub">연면적 제외 층은 비고에서 제외 표시</td>
+          </tr>
+          <tr>
+            <th colspan="5">전체 바닥면적 합계</th>
+            <td class="total" id="areaTotal">-</td>
+            <td colspan="2"></td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  </section>
+
+  <section class="page" id="page-laws">
+    <div class="sheet">
+      <h2 class="sheet-title">■ 검토법규</h2>
+      <table class="doc"><thead><tr><th style="width:60%">구 분</th><th style="width:150px">개정 일자</th><th>비 고</th></tr></thead>
+        <tbody id="lawsBody"><tr><td colspan="3" class="empty">검토를 실행하면 조회된 법령과 시행일자가 표시됩니다.</td></tr></tbody></table>
+    </div>
+  </section>
+
+  <section class="page" id="page-summary">
+    <div class="sheet">
+      <div class="sheet-head">
+        <h2 class="sheet-title">■ 관련 주요 법규 검토서(요약)</h2>
+        <span class="hint-inline">판정·사유·기준은 직접 고칠 수 있습니다. 고친 값이 검토서에 나갑니다 (↺ 되돌리기)</span>
+      </div>
+      <table class="doc"><thead><tr>
+        <th style="width:150px">법 규 명 및 조 항</th><th style="width:200px">대 상</th>
+        <th style="width:170px">법 적 기 준</th><th>설 계 기 준(산정식)</th><th style="width:150px">비 고</th>
+      </tr></thead><tbody id="summaryBody"><tr><td colspan="5" class="empty">검토를 실행하세요.</td></tr></tbody></table>
+    </div>
+  </section>
+
+  <section class="page" id="page-cert">
+    <div class="sheet">
+      <div class="sheet-head">
+        <h2 class="sheet-title">■ 각종 인증 의무 대상 여부</h2>
+        <span class="hint-inline">판정·사유는 직접 고칠 수 있습니다 (↺ 되돌리기)</span>
+      </div>
+      <table class="doc"><thead><tr>
+        <th style="width:150px">법 규 명 및 조 항</th><th style="width:200px">대 상</th>
+        <th style="width:170px">법 적 기 준</th><th>설 계 기 준(산정식)</th><th style="width:150px">비 고</th>
+      </tr></thead><tbody id="certBody"><tr><td colspan="5" class="empty">검토를 실행하세요.</td></tr></tbody></table>
+    </div>
+  </section>
+
+  <section class="page" id="page-district">
+    <div class="sheet">
+      <h2 class="sheet-title">■ 건축허가 관련 지구단위계획 지침</h2>
+      <table class="doc"><thead><tr>
+        <th style="width:160px">구 분</th><th style="width:220px">항 목</th><th>내 용</th><th style="width:150px">적용여부</th>
+      </tr></thead><tbody id="districtBody"><tr><td colspan="4" class="empty">검토를 실행하세요.</td></tr></tbody></table>
+    </div>
+  </section>
+
+  <section class="page" id="page-site">
+    <div class="sheet">
+      <h2 class="sheet-title">■ 해당 지번 관련 주요 법규</h2>
+      <table class="doc"><thead><tr>
+        <th style="width:160px">구 분</th><th style="width:220px">항 목</th><th>내 용</th><th style="width:150px">적용여부</th>
+      </tr></thead><tbody id="siteBody"><tr><td colspan="4" class="empty">검토를 실행하세요.</td></tr></tbody></table>
+    </div>
+  </section>
+
+  <section class="page" id="page-detail">
+    <div class="sheet">
+      <div class="sheet-head">
+        <h2 class="sheet-title">■ 장별 상세검토</h2>
+        <div class="sheet-tools">
+          <span class="hint-inline">계약 전에는 주요 법규까지만 검토합니다. 필요할 때만 실행하세요.</span>
+          <button class="btn sm" id="btnRunDetail">상세검토 실행</button>
+        </div>
+      </div>
+      <div id="detailBody"><p class="todo">상세검토를 실행하면 제4~7장 등 장별 조문 검토가 표시됩니다.</p></div>
+    </div>
+  </section>
+</main>
+
+<!-- 검토 진행 -->
+<dialog id="dlgRun">
+  <div class="dlg">
+    <h3>검토 실행 중</h3>
+    <div class="progress"><div class="bar" id="runBar"></div></div>
+    <p class="run-current" id="runCurrent">시작하는 중…</p>
+    <pre class="run-log" id="runLog"></pre>
+    <menu><button class="btn ghost" id="btnRunClose">닫기</button></menu>
+  </div>
+</dialog>
+
+<footer class="statusbar"><span id="status">준비됨</span></footer>
+
+<!-- 설정 -->
+<dialog id="dlgSettings">
+  <form method="dialog" class="dlg">
+    <h3>설정</h3>
+    <label>법제처 Open API 키 (OC) <input type="password" id="setMoleg" placeholder="미입력"></label>
+    <p class="hint">open.law.go.kr 무료 발급. 조문 원문 조회에 사용.</p>
+    <label>Claude API 키 <input type="password" id="setClaude" placeholder="미입력"></label>
+    <p class="hint">없으면 AI 판정 항목이 "확인필요"로 표시됩니다.</p>
+    <label>Claude 모델 <input type="text" id="setModel"></label>
+    <label>VWorld 키 <input type="password" id="setVworld" placeholder="미입력"></label>
+    <p class="hint">주소 자동조회에 사용. 없으면 직접 입력.</p>
+    <label>VWorld 서비스 URL <input type="text" id="setVworldDomain"></label>
+    <menu>
+      <button value="cancel" class="btn ghost">닫기</button>
+      <button value="save" id="btnSaveSettings" class="btn">저장</button>
+    </menu>
+  </form>
+</dialog>
+
+<!-- 프로젝트 불러오기 -->
+<dialog id="dlgOpen">
+  <div class="dlg">
+    <h3>프로젝트 불러오기</h3>
+    <div id="projectList" class="proj-list"></div>
+    <menu><button class="btn ghost" id="btnOpenClose">닫기</button></menu>
+  </div>
+</dialog>
+
+<script src="app.js"></script>
+</body>
+</html>
