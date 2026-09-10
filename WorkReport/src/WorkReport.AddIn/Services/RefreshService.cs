@@ -136,7 +136,12 @@ namespace WorkReport.AddIn.Services
                 {
                     Directory.CreateDirectory(settings.OutputRootDir);
                     foreach (var file in written)
-                        File.Copy(file, Path.Combine(settings.OutputRootDir, Path.GetFileName(file)), true);
+                    {
+                        // reports\ 하위 구조를 그대로 유지해 복사한다
+                        string dest = Path.Combine(settings.OutputRootDir, RelativeToStaging(file));
+                        Directory.CreateDirectory(Path.GetDirectoryName(dest));
+                        File.Copy(file, dest, true);
+                    }
                     result.FinalOutputDir = settings.OutputRootDir;
                     result.NasCopyOk = true;
                     Logger.Info($"출력 루트 복사 완료: {settings.OutputRootDir}");
@@ -150,10 +155,15 @@ namespace WorkReport.AddIn.Services
             }
 
             // 폴더별로 "이번에 넣은 파일" 목록을 모아 두었다가, 마지막에 옛 파일을 정리한다
-            var writtenNames = written.Select(Path.GetFileName).ToList();
+            // (루트에는 index.html, reports\ 에는 프로젝트별 리포트가 들어간다)
             var filesByDir = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
-            AddFiles(filesByDir, LocalStagingDir, writtenNames);
-            if (result.NasCopyOk) AddFiles(filesByDir, settings.OutputRootDir, writtenNames);
+            foreach (var file in written)
+            {
+                string sub = Path.GetDirectoryName(RelativeToStaging(file)) ?? "";
+                var name = new[] { Path.GetFileName(file) };
+                AddFiles(filesByDir, Path.Combine(LocalStagingDir, sub), name);
+                if (result.NasCopyOk) AddFiles(filesByDir, Path.Combine(settings.OutputRootDir, sub), name);
+            }
 
             // 프로젝트별 개별 출력 폴더(선택): 공통 루트와 별개로 추가 복사
             foreach (var d in reportData)
@@ -162,7 +172,7 @@ namespace WorkReport.AddIn.Services
                 try
                 {
                     Directory.CreateDirectory(d.Project.OutputDir);
-                    File.Copy(Path.Combine(LocalStagingDir, d.FileName),
+                    File.Copy(Path.Combine(LocalStagingDir, HtmlReportRenderer.ReportsDirName, d.FileName),
                         Path.Combine(d.Project.OutputDir, d.FileName), true);
                     AddFiles(filesByDir, d.Project.OutputDir, new[] { d.FileName });
                     Logger.Info($"개별 출력 복사: {d.Project.Number} → {d.Project.OutputDir}");
@@ -195,6 +205,15 @@ namespace WorkReport.AddIn.Services
             Logger.Info($"===== 리포트 갱신 완료: 프로젝트 {result.Projects.Count}건, " +
                         $"정리 {result.RemovedFiles.Count}건, 경고 {result.Warnings.Count}건 =====");
             return result;
+        }
+
+        /// <summary>%TEMP%\WorkReport 기준 상대 경로 (예: "index.html", "reports\ABC.html").</summary>
+        private static string RelativeToStaging(string fullPath)
+        {
+            string root = LocalStagingDir.TrimEnd('\\', '/');
+            if (fullPath.StartsWith(root, StringComparison.OrdinalIgnoreCase))
+                return fullPath.Substring(root.Length).TrimStart('\\', '/');
+            return Path.GetFileName(fullPath);
         }
 
         private static void AddFiles(Dictionary<string, HashSet<string>> map, string dir, IEnumerable<string> names)

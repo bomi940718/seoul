@@ -16,6 +16,9 @@ namespace WorkReport.Core.Reporting
     /// </summary>
     public class HtmlReportRenderer
     {
+        /// <summary>프로젝트별 리포트를 모아두는 하위 폴더. 출력 폴더 루트에는 index.html만 남는다.</summary>
+        public const string ReportsDirName = "reports";
+
         private static readonly string[] KoreanDow = { "일", "월", "화", "수", "목", "금", "토" };
 
         // </script> 문자열이 데이터에 있어도 스크립트 블록이 깨지지 않도록 <,> 를 이스케이프
@@ -64,7 +67,7 @@ namespace WorkReport.Core.Reporting
                     name = p.Project.Name,
                     group = string.IsNullOrWhiteSpace(p.Group) ? p.Project.EffectiveGroup : p.Group.Trim(),
                     status = p.Project.EffectiveStatus,
-                    file = p.FileName,
+                    file = ReportsDirName + "/" + p.FileName,
                     total = p.Records.Count,
                     o = p.Records.Count(r => NormStatus(r.Status) == "O"),
                     tri = p.Records.Count(r => NormStatus(r.Status) == "△"),
@@ -85,10 +88,13 @@ namespace WorkReport.Core.Reporting
         public List<string> WriteAll(string outputDir, IList<ProjectReportData> projects, IList<string> authorNames, DateTime generatedAt)
         {
             Directory.CreateDirectory(outputDir);
+            string reportsDir = Path.Combine(outputDir, ReportsDirName);
+            Directory.CreateDirectory(reportsDir);
+
             var written = new List<string>();
             foreach (var p in projects)
             {
-                string path = Path.Combine(outputDir, p.FileName);
+                string path = Path.Combine(reportsDir, p.FileName);
                 File.WriteAllText(path, RenderProjectReport(p, authorNames, generatedAt), new UTF8Encoding(false));
                 written.Add(path);
             }

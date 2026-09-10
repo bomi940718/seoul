@@ -4,68 +4,112 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>@@TITLE@@</title>
+<script>
+// 화면 깜빡임 방지: 스타일 적용 전에 테마를 먼저 확정한다
+(function(){
+  try {
+    var v = localStorage.getItem("workreport.theme");
+    if (v === "dark" || v === "light") document.documentElement.setAttribute("data-theme", v);
+  } catch(e) {}
+})();
+</script>
 <style>
+  /* ── 색 토큰: 밝은 화면 기본 ─────────── */
+  :root {
+    --bg:#f5f6f8; --card:#fff; --bd:#e3e6ec; --sh:rgba(16,24,40,.04);
+    --tx:#1f2430; --tx2:#4b5563; --tx3:#6b7280; --tx4:#9ca3af; --tx5:#b0b6c1;
+    --hov:#f9fafb; --btnbd:#d1d5db; --line:#eef0f4; --line2:#dfe3ea;
+    --on-bg:#1f2937; --on-fg:#fff;
+    --lk:#2563eb; --ring:#bfdbfe; --ringbd:#60a5fa;
+    --a0-bg:#dbeafe; --a0-fg:#1d4ed8;
+    --a1-bg:#ede9fe; --a1-fg:#6d28d9;
+  }
+  /* 시스템이 어두운 화면일 때 (사용자가 밝게 고정하지 않은 경우) */
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg:#12151a; --card:#1a1f27; --bd:#2a313c; --sh:rgba(0,0,0,.4);
+      --tx:#e5e9f0; --tx2:#b8c1cf; --tx3:#98a2b3; --tx4:#7a8496; --tx5:#5e6878;
+      --hov:#222834; --btnbd:#3a4351; --line:#242b35; --line2:#333c49;
+      --on-bg:#e5e9f0; --on-fg:#12151a;
+      --lk:#7dd3fc; --ring:#1e3a5f; --ringbd:#3b82f6;
+      --a0-bg:#1e2f4d; --a0-fg:#93c5fd;
+      --a1-bg:#2a2445; --a1-fg:#c4b5fd;
+    }
+  }
+  /* 사용자가 직접 어둡게 고른 경우 */
+  :root[data-theme="dark"] {
+    --bg:#12151a; --card:#1a1f27; --bd:#2a313c; --sh:rgba(0,0,0,.4);
+    --tx:#e5e9f0; --tx2:#b8c1cf; --tx3:#98a2b3; --tx4:#7a8496; --tx5:#5e6878;
+    --hov:#222834; --btnbd:#3a4351; --line:#242b35; --line2:#333c49;
+    --on-bg:#e5e9f0; --on-fg:#12151a;
+    --lk:#7dd3fc; --ring:#1e3a5f; --ringbd:#3b82f6;
+    --a0-bg:#1e2f4d; --a0-fg:#93c5fd;
+    --a1-bg:#2a2445; --a1-fg:#c4b5fd;
+  }
+
   * { margin:0; padding:0; box-sizing:border-box; }
   html { -webkit-text-size-adjust:100%; }
   body {
     font-family:'Malgun Gothic','Segoe UI',sans-serif;
-    background:#f5f6f8; color:#1f2430;
+    background:var(--bg); color:var(--tx);
     font-size:14px; line-height:1.6;
   }
-  a { color:#2563eb; text-decoration:none; word-break:break-all; }
+  a { color:var(--lk); text-decoration:none; word-break:break-all; }
   a:hover { text-decoration:underline; }
   .wrap { max-width:1000px; margin:0 auto; padding:20px 16px 60px; }
 
   /* ── 헤더 ─────────────────────────── */
-  .hd { background:#fff; border:1px solid #e3e6ec; border-radius:10px; padding:18px 22px; margin-bottom:12px; }
-  .hd .num { font-size:12px; color:#6b7280; letter-spacing:.4px; }
+  .hd { background:var(--card); border:1px solid var(--bd); border-radius:10px; padding:18px 22px; margin-bottom:12px; }
+  .hd .num { font-size:12px; color:var(--tx3); letter-spacing:.4px; }
   .hd h1 { font-size:21px; font-weight:700; margin:2px 0 10px; }
-  .hd .stats { display:flex; flex-wrap:wrap; gap:6px 14px; font-size:12.5px; color:#4b5563; align-items:center; }
-  .hd .stats b { color:#111827; font-weight:700; }
-  .hd .upd { margin-left:auto; color:#9ca3af; font-size:12px; }
+  .hd .stats { display:flex; flex-wrap:wrap; gap:6px 14px; font-size:12.5px; color:var(--tx2); align-items:center; }
+  .hd .stats b { color:var(--tx); font-weight:700; }
+  .hd .upd { margin-left:auto; color:var(--tx4); font-size:12px; }
   .hd .back { font-size:12.5px; }
 
   /* ── 필터 바 ───────────────────────── */
   .fbar {
     position:sticky; top:0; z-index:10;
-    background:#fff; border:1px solid #e3e6ec; border-radius:10px;
+    background:var(--card); border:1px solid var(--bd); border-radius:10px;
     padding:10px 12px; margin-bottom:14px;
     display:flex; flex-wrap:wrap; gap:8px; align-items:center;
-    box-shadow:0 2px 6px rgba(16,24,40,.04);
+    box-shadow:0 2px 6px var(--sh);
   }
   .fbar input[type=search] {
     flex:1 1 200px; min-width:160px;
-    padding:7px 10px; border:1px solid #d1d5db; border-radius:7px; font:inherit; font-size:13.5px;
+    padding:7px 10px; border:1px solid var(--btnbd); border-radius:7px;
+    font:inherit; font-size:13.5px; background:var(--card); color:var(--tx);
   }
   .fbar select, .fbar input[type=date] {
-    padding:6.5px 8px; border:1px solid #d1d5db; border-radius:7px;
-    font:inherit; font-size:13px; background:#fff; color:#1f2430;
+    padding:6.5px 8px; border:1px solid var(--btnbd); border-radius:7px;
+    font:inherit; font-size:13px; background:var(--card); color:var(--tx);
   }
-  .fbar input:focus, .fbar select:focus { outline:2px solid #bfdbfe; border-color:#60a5fa; }
-  .fbar .tilde { color:#9ca3af; }
-  .fbar .cnt { font-size:12.5px; color:#6b7280; margin-left:auto; white-space:nowrap; }
-  .fbar .reset {
-    border:1px solid #d1d5db; background:#f9fafb; border-radius:7px;
-    padding:6.5px 10px; font:inherit; font-size:12.5px; color:#4b5563; cursor:pointer;
+  .fbar input:focus, .fbar select:focus { outline:2px solid var(--ring); border-color:var(--ringbd); }
+  .fbar .tilde { color:var(--tx4); }
+  .fbar .cnt { font-size:12.5px; color:var(--tx3); margin-left:auto; white-space:nowrap; }
+  .fbar .reset, .fbar .tg {
+    border:1px solid var(--btnbd); background:var(--hov); border-radius:7px;
+    padding:6.5px 10px; font:inherit; font-size:12.5px; color:var(--tx2); cursor:pointer;
   }
-  .fbar .reset:hover { background:#f3f4f6; }
+  .fbar .reset:hover, .fbar .tg:hover { background:var(--bd); }
+  .fbar .tg.on { background:var(--on-bg); border-color:var(--on-bg); color:var(--on-fg); }
 
   /* ── 행 카드 리스트 ─────────────────── */
-  .list { background:#fff; border:1px solid #e3e6ec; border-radius:10px; overflow:hidden; }
-  .row { display:flex; gap:12px; padding:11px 16px; border-top:1px solid #eef0f4; }
+  .list { background:var(--card); border:1px solid var(--bd); border-radius:10px; overflow:hidden; }
+  .row { display:flex; gap:12px; padding:11px 16px; border-top:1px solid var(--line); }
   .row:first-child { border-top:none; }
-  .row.newdate { border-top:2px solid #dfe3ea; }
+  .row.newdate { border-top:2px solid var(--line2); }
   .row:first-child.newdate { border-top:none; }
 
-  .dt { flex:0 0 118px; font-size:13px; font-weight:700; color:#374151; padding-top:1px; white-space:nowrap; }
-  .dt .dow { font-weight:400; color:#9ca3af; font-size:12px; margin-left:2px; }
+  .dt { flex:0 0 118px; font-size:13px; font-weight:700; color:var(--tx2); padding-top:1px; white-space:nowrap; }
+  .dt .dow { font-weight:400; color:var(--tx4); font-size:12px; margin-left:2px; }
   .dt.ghost { visibility:hidden; }
 
   /* 작성자·담당·시간 열 (내용 앞) */
-  .who { flex:0 0 190px; min-width:0; font-size:11.5px; color:#6b7280; line-height:1.5; }
+  .who { flex:0 0 190px; min-width:0; font-size:11.5px; color:var(--tx3); line-height:1.5; }
   .who .chip { margin-bottom:3px; }
   .who div { word-break:break-word; }
-  .who .lb { color:#b0b6c1; }
+  .who .lb { color:var(--tx5); }
 
   .bd { flex:1; min-width:0; }
   .desc { white-space:normal; word-break:break-word; }
@@ -73,17 +117,17 @@
     display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden;
   }
   .more {
-    border:none; background:none; color:#2563eb; cursor:pointer;
+    border:none; background:none; color:var(--lk); cursor:pointer;
     font:inherit; font-size:12.5px; padding:2px 0; display:none;
   }
   .chip {
     display:inline-block; padding:1px 8px; border-radius:9px; font-size:11.5px; font-weight:700;
   }
-  .chip.a0 { background:#dbeafe; color:#1d4ed8; }
-  .chip.a1 { background:#ede9fe; color:#6d28d9; }
+  .chip.a0 { background:var(--a0-bg); color:var(--a0-fg); }
+  .chip.a1 { background:var(--a1-bg); color:var(--a1-fg); }
 
-  .empty { padding:46px 16px; text-align:center; color:#9ca3af; font-size:13.5px; }
-  .foot { margin-top:14px; text-align:center; color:#b0b6c1; font-size:11.5px; }
+  .empty { padding:46px 16px; text-align:center; color:var(--tx4); font-size:13.5px; }
+  .foot { margin-top:14px; text-align:center; color:var(--tx5); font-size:11.5px; }
 
   @media (max-width:720px) {
     .dt { flex-basis:96px; font-size:11.5px; }
@@ -102,7 +146,7 @@
       <span>총 <b id="sTotal"></b>건</span>
       <span id="sByAuthor"></span>
       <span class="upd">마지막 갱신: <span id="sUpd"></span></span>
-      <span class="back"><a href="index.html">← 대시보드</a></span>
+      <span class="back"><a href="../index.html">← 대시보드</a></span>
     </div>
   </div>
 
@@ -116,8 +160,10 @@
       <option value="X">X</option>
       <option value="-">미기재</option>
     </select>
+    <button class="tg" id="fHideX" title="실행되지 않은(X) 기록을 숨겨 실행된 것만 봅니다">실행 X 숨기기</button>
     <input type="date" id="fFrom"><span class="tilde">~</span><input type="date" id="fTo">
     <button class="reset" id="fReset">초기화</button>
+    <button class="tg" id="fTheme" title="밝은 화면 / 어두운 화면 전환"></button>
     <span class="cnt" id="fCnt"></span>
   </div>
 
@@ -151,6 +197,26 @@ function statusKey(st){
   if(st==="X") return "X";
   return "-";
 }
+// 여부(K열)나 실행(L열) 중 하나라도 X 면 "실행되지 않음"으로 본다
+function isNotDone(r){
+  return statusKey(r.st)==="X" || statusKey(r.pl)==="X";
+}
+
+// ── 어두운 화면 전환 ───────────────────
+var themeBtn = document.getElementById("fTheme");
+function curTheme(){
+  var v = document.documentElement.getAttribute("data-theme");
+  if(v) return v;
+  return (window.matchMedia && matchMedia("(prefers-color-scheme: dark)").matches) ? "dark" : "light";
+}
+function paintThemeBtn(){ themeBtn.textContent = curTheme()==="dark" ? "☀ 밝게" : "🌙 어둡게"; }
+themeBtn.addEventListener("click", function(){
+  var next = curTheme()==="dark" ? "light" : "dark";
+  document.documentElement.setAttribute("data-theme", next);
+  try { localStorage.setItem("workreport.theme", next); } catch(e) {}
+  paintThemeBtn();
+});
+paintThemeBtn();
 
 // ── 헤더 채우기 ────────────────────────
 document.getElementById("hNum").textContent = META.number;
@@ -181,11 +247,13 @@ var els = {
   text: document.getElementById("fText"),
   author: document.getElementById("fAuthor"),
   status: document.getElementById("fStatus"),
+  hideX: document.getElementById("fHideX"),
   from: document.getElementById("fFrom"),
   to: document.getElementById("fTo"),
   cnt: document.getElementById("fCnt"),
   list: document.getElementById("list")
 };
+var hideX = false;
 
 function pass(r){
   var q = els.text.value.trim().toLowerCase();
@@ -196,6 +264,7 @@ function pass(r){
   }
   if(els.author.value!=="" && r.a!==Number(els.author.value)) return false;
   if(els.status.value!=="" && statusKey(r.st)!==els.status.value) return false;
+  if(hideX && isNotDone(r)) return false;
   if(els.from.value && r.d<els.from.value) return false;
   if(els.to.value && r.d>els.to.value) return false;
   return true;
@@ -245,6 +314,12 @@ els.list.addEventListener("click", function(e){
   e.target.textContent = open ? "더보기" : "접기";
 });
 
+els.hideX.addEventListener("click", function(){
+  hideX = !hideX;
+  els.hideX.className = "tg" + (hideX ? " on" : "");
+  render();
+});
+
 ["input","change"].forEach(function(ev){
   els.text.addEventListener(ev, render);
   els.author.addEventListener(ev, render);
@@ -255,6 +330,7 @@ els.list.addEventListener("click", function(e){
 document.getElementById("fReset").addEventListener("click", function(){
   els.text.value=""; els.author.value=""; els.status.value="";
   els.from.value=""; els.to.value="";
+  hideX = false; els.hideX.className = "tg";
   render();
 });
 

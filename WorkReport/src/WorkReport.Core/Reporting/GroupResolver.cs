@@ -52,7 +52,7 @@ namespace WorkReport.Core.Reporting
             if (project != null && !string.IsNullOrWhiteSpace(project.Group))
                 return project.Group.Trim();
 
-            if (groups == null || groups.Count == 0) return Fallback;
+            if (groups == null || groups.Count == 0) return FallbackFor(project);
 
             var hits = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
             foreach (var r in records ?? Enumerable.Empty<WorkRecord>())
@@ -64,12 +64,22 @@ namespace WorkReport.Core.Reporting
                 hits.TryGetValue(g, out n);
                 hits[g] = n + 1;
             }
-            if (hits.Count == 0) return Fallback;
+            if (hits.Count == 0) return FallbackFor(project);
 
             return hits
                 .OrderByDescending(kv => kv.Value)
                 .ThenBy(kv => IndexOf(groups, kv.Key))
                 .First().Key;
+        }
+
+        /// <summary>
+        /// 규칙에 걸리지 않을 때의 그룹. 프로젝트 이름(일지 H열)을 그대로 쓴다 —
+        /// 대시보드 카드의 큰 글씨와 같은 값이라, 규칙을 하나도 안 적어도 이름별로 묶인다.
+        /// </summary>
+        private static string FallbackFor(ProjectInfo project)
+        {
+            if (project == null || string.IsNullOrWhiteSpace(project.Name)) return Fallback;
+            return System.Text.RegularExpressions.Regex.Replace(project.Name, @"\s+", " ").Trim();
         }
 
         private static int IndexOf(IList<GroupRule> groups, string name)

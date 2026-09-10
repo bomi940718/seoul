@@ -4,80 +4,134 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>워크리포트 대시보드</title>
+<script>
+// 화면 깜빡임 방지: 스타일 적용 전에 테마를 먼저 확정한다
+(function(){
+  try {
+    var v = localStorage.getItem("workreport.theme");
+    if (v === "dark" || v === "light") document.documentElement.setAttribute("data-theme", v);
+  } catch(e) {}
+})();
+</script>
 <style>
+  /* ── 색 토큰: 밝은 화면 기본 ─────────── */
+  :root {
+    --bg:#f5f6f8; --card:#fff; --bd:#e3e6ec; --sh:rgba(16,24,40,.08);
+    --tx:#1f2430; --tx2:#4b5563; --tx3:#6b7280; --tx4:#9ca3af; --tx5:#b0b6c1;
+    --hov:#f9fafb; --btnbd:#d1d5db;
+    --on-bg:#1f2937; --on-fg:#fff;
+    --o-bg:#dcfce7; --o-fg:#15803d;
+    --t-bg:#ffedd5; --t-fg:#c2410c;
+    --x-bg:#fee2e2; --x-fg:#b91c1c;
+    --n-bg:#f3f4f6; --n-fg:#6b7280;
+    --plan-bd:#7dd3fc; --plan-fg:#0369a1; --plan-bg:#f0f9ff;
+  }
+  /* 시스템이 어두운 화면일 때 (사용자가 밝게 고정하지 않은 경우) */
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg:#12151a; --card:#1a1f27; --bd:#2a313c; --sh:rgba(0,0,0,.4);
+      --tx:#e5e9f0; --tx2:#b8c1cf; --tx3:#98a2b3; --tx4:#7a8496; --tx5:#5e6878;
+      --hov:#222834; --btnbd:#3a4351;
+      --on-bg:#e5e9f0; --on-fg:#12151a;
+      --o-bg:#14351f; --o-fg:#86efac;
+      --t-bg:#3a2410; --t-fg:#fdba74;
+      --x-bg:#3b1717; --x-fg:#fca5a5;
+      --n-bg:#252b35; --n-fg:#98a2b3;
+      --plan-bd:#2b5d7a; --plan-fg:#7dd3fc; --plan-bg:#16242e;
+    }
+  }
+  /* 사용자가 직접 어둡게 고른 경우 */
+  :root[data-theme="dark"] {
+    --bg:#12151a; --card:#1a1f27; --bd:#2a313c; --sh:rgba(0,0,0,.4);
+    --tx:#e5e9f0; --tx2:#b8c1cf; --tx3:#98a2b3; --tx4:#7a8496; --tx5:#5e6878;
+    --hov:#222834; --btnbd:#3a4351;
+    --on-bg:#e5e9f0; --on-fg:#12151a;
+    --o-bg:#14351f; --o-fg:#86efac;
+    --t-bg:#3a2410; --t-fg:#fdba74;
+    --x-bg:#3b1717; --x-fg:#fca5a5;
+    --n-bg:#252b35; --n-fg:#98a2b3;
+    --plan-bd:#2b5d7a; --plan-fg:#7dd3fc; --plan-bg:#16242e;
+  }
+
   * { margin:0; padding:0; box-sizing:border-box; }
   body {
     font-family:'Malgun Gothic','Segoe UI',sans-serif;
-    background:#f5f6f8; color:#1f2430; font-size:14px; line-height:1.6;
+    background:var(--bg); color:var(--tx); font-size:14px; line-height:1.6;
   }
   a { text-decoration:none; color:inherit; }
   .wrap { max-width:1000px; margin:0 auto; padding:24px 16px 60px; }
 
   .hd { display:flex; flex-wrap:wrap; align-items:baseline; gap:8px 14px; margin-bottom:14px; }
   .hd h1 { font-size:22px; font-weight:700; }
-  .hd .sub { color:#6b7280; font-size:12.5px; }
-  .hd .upd { margin-left:auto; color:#9ca3af; font-size:12px; }
+  .hd .sub { color:var(--tx3); font-size:12.5px; }
+  .hd .upd { margin-left:auto; color:var(--tx4); font-size:12px; }
 
   /* ── 필터 바: 그룹 + 상태 ─────────────── */
   .fbar {
-    background:#fff; border:1px solid #e3e6ec; border-radius:10px;
+    background:var(--card); border:1px solid var(--bd); border-radius:10px;
     padding:10px 14px; margin-bottom:18px;
     display:flex; flex-wrap:wrap; gap:6px 8px; align-items:center;
   }
-  .fbar .lb { font-size:12px; color:#9ca3af; margin-right:2px; }
-  .fbar .sep { width:1px; height:18px; background:#e5e7eb; margin:0 6px; }
+  .fbar .lb { font-size:12px; color:var(--tx4); margin-right:2px; }
+  .fbar .sep { width:1px; height:18px; background:var(--bd); margin:0 6px; }
   .tg {
-    border:1px solid #d1d5db; background:#fff; color:#4b5563;
+    border:1px solid var(--btnbd); background:var(--card); color:var(--tx2);
     border-radius:14px; padding:3px 12px; font:inherit; font-size:12.5px; cursor:pointer;
   }
-  .tg:hover { background:#f9fafb; }
-  .tg.on { background:#1f2937; border-color:#1f2937; color:#fff; }
+  .tg:hover { background:var(--hov); }
+  .tg.on { background:var(--on-bg); border-color:var(--on-bg); color:var(--on-fg); }
   .tg .n { opacity:.65; font-size:11px; margin-left:3px; }
+  .theme { margin-left:auto; }
 
-  /* ── 그룹 섹션 ───────────────────────── */
-  .grp { margin-bottom:22px; }
+  /* ── 상태 섹션 ───────────────────────── */
+  .grp { margin-bottom:26px; }
   .grp h2 {
-    font-size:13.5px; font-weight:700; color:#4b5563;
-    margin:0 0 8px 2px; display:flex; align-items:center; gap:8px;
+    font-size:14px; font-weight:700; color:var(--tx2);
+    margin:0 0 9px 2px; display:flex; align-items:center; gap:8px;
+    padding-bottom:6px; border-bottom:1px solid var(--bd);
   }
-  .grp h2 .n { font-weight:400; color:#9ca3af; font-size:12px; }
+  .grp h2 .n { font-weight:400; color:var(--tx4); font-size:12px; }
+  .grp h2 .dot { width:8px; height:8px; border-radius:50%; flex:0 0 auto; }
+  .grp h2 .dot.plan { background:var(--plan-bd); }
+  .grp h2 .dot.act  { background:var(--o-fg); }
+  .grp h2 .dot.done { background:var(--tx5); }
   .grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(280px, 1fr)); gap:12px; }
 
   .card {
-    background:#fff; border:1px solid #e3e6ec; border-radius:10px;
+    background:var(--card); border:1px solid var(--bd); border-radius:10px;
     padding:15px 18px; display:block; position:relative; cursor:pointer;
     transition:box-shadow .12s, transform .12s;
   }
-  .card:hover { box-shadow:0 4px 14px rgba(16,24,40,.08); transform:translateY(-1px); }
-  .card .num { font-size:11.5px; color:#6b7280; letter-spacing:.4px; padding-right:70px; }
+  .card:hover { box-shadow:0 4px 14px var(--sh); transform:translateY(-1px); }
+  .card .num { font-size:11.5px; color:var(--tx3); letter-spacing:.4px; padding-right:70px; }
   .card h3 { font-size:16px; font-weight:700; margin:2px 0 10px; word-break:break-all; }
   .card .row1 { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
-  .card .total { font-size:13px; color:#374151; }
-  .card .total b { font-size:16px; color:#111827; }
+  .card .total { font-size:13px; color:var(--tx2); }
+  .card .total b { font-size:16px; color:var(--tx); }
   .pill {
     display:inline-flex; align-items:center; gap:3px;
     font-size:11.5px; font-weight:700; padding:1px 8px; border-radius:9px;
   }
-  .pill.o { background:#dcfce7; color:#15803d; }
-  .pill.t { background:#ffedd5; color:#c2410c; }
-  .pill.x { background:#fee2e2; color:#b91c1c; }
-  .pill.n { background:#f3f4f6; color:#6b7280; }
-  .card .last { margin-top:9px; font-size:12px; color:#9ca3af; }
-  .card .last b { color:#4b5563; font-weight:700; }
+  .pill.o { background:var(--o-bg); color:var(--o-fg); }
+  .pill.t { background:var(--t-bg); color:var(--t-fg); }
+  .pill.x { background:var(--x-bg); color:var(--x-fg); }
+  .pill.n { background:var(--n-bg); color:var(--n-fg); }
+  .card .last { margin-top:9px; font-size:12px; color:var(--tx4); }
+  .card .last b { color:var(--tx2); font-weight:700; }
 
   /* 카드별 상태 변경 셀렉터 (이 PC 브라우저에 저장) */
   .stSel {
     position:absolute; top:10px; right:10px;
-    font:inherit; font-size:11.5px; color:#4b5563;
-    border:1px solid #d1d5db; border-radius:7px; padding:2px 4px; background:#fff;
+    font:inherit; font-size:11.5px; color:var(--tx2);
+    border:1px solid var(--btnbd); border-radius:7px; padding:2px 4px; background:var(--card);
     cursor:pointer;
   }
-  .stSel.plan { border-color:#7dd3fc; color:#0369a1; background:#f0f9ff; }
-  .stSel.done { color:#9ca3af; background:#f9fafb; }
-  .card.done { opacity:.6; }
+  .stSel.plan { border-color:var(--plan-bd); color:var(--plan-fg); background:var(--plan-bg); }
+  .stSel.done { color:var(--tx4); background:var(--hov); }
+  .card.done { opacity:.62; }
 
-  .empty { padding:60px 0; text-align:center; color:#9ca3af; }
-  .foot { margin-top:20px; text-align:center; color:#b0b6c1; font-size:11.5px; }
+  .empty { padding:60px 0; text-align:center; color:var(--tx4); }
+  .foot { margin-top:20px; text-align:center; color:var(--tx5); font-size:11.5px; }
 </style>
 </head>
 <body>
@@ -92,6 +146,7 @@
     <span class="lb">그룹</span><span id="fGroups"></span>
     <span class="sep"></span>
     <span class="lb">상태</span><span id="fStatus"></span>
+    <button class="tg theme" id="fTheme" title="밝은 화면 / 어두운 화면 전환"></button>
   </div>
 
   <div id="sections"></div>
@@ -113,12 +168,30 @@ document.getElementById("hUpd").textContent = META.generatedAt;
 document.getElementById("foot").textContent =
   "이 파일은 자동 생성됩니다 — 직접 수정하지 마세요 · " + META.generatedAt;
 
+// ── 어두운 화면 전환 ───────────────────
+var themeBtn = document.getElementById("fTheme");
+function curTheme(){
+  var v = document.documentElement.getAttribute("data-theme");
+  if(v) return v;
+  return (window.matchMedia && matchMedia("(prefers-color-scheme: dark)").matches) ? "dark" : "light";
+}
+function paintThemeBtn(){ themeBtn.textContent = curTheme()==="dark" ? "☀ 밝게" : "🌙 어둡게"; }
+themeBtn.addEventListener("click", function(){
+  var next = curTheme()==="dark" ? "light" : "dark";
+  document.documentElement.setAttribute("data-theme", next);
+  try { localStorage.setItem("workreport.theme", next); } catch(e) {}
+  paintThemeBtn();
+});
+paintThemeBtn();
+
 // ── 필터 상태: 그룹 = 전체 또는 특정 1개 / 상태 = 다중 토글 (완료는 기본 숨김) ──
 var groups = [];
 PROJECTS.forEach(function(p){ if(groups.indexOf(p.group)<0) groups.push(p.group); });
+groups.sort(function(a,b){ return a.localeCompare(b, "ko"); });
 var curGroup = "";                                // "" = 전체
 var stOn = { "계획":true, "진행":true, "완료":false };
 var ST = ["계획","진행","완료"];
+var ST_CLS = { "계획":"plan", "진행":"act", "완료":"done" };
 
 // 상태는 이 PC 브라우저(localStorage)에 저장한 값이 우선, 없으면 projects.json 값
 function effStatus(p){
@@ -152,10 +225,12 @@ function renderFilters(){
     }));
   });
 
+  // 상태 개수는 지금 보고 있는 그룹 기준
+  var inGroup = PROJECTS.filter(function(p){ return !curGroup || p.group===curGroup; });
   var s = document.getElementById("fStatus");
   s.innerHTML = "";
   ST.forEach(function(st){
-    var cnt = PROJECTS.filter(function(p){ return effStatus(p)===st; }).length;
+    var cnt = inGroup.filter(function(p){ return effStatus(p)===st; }).length;
     s.appendChild(makeToggle(st, cnt, stOn[st], function(){
       stOn[st] = !stOn[st];
       renderAll();
@@ -197,11 +272,20 @@ function renderAll(){
   document.getElementById("hSub").textContent =
     "프로젝트 " + visible.length + (visible.length===PROJECTS.length ? "개" : " / " + PROJECTS.length + "개");
 
+  // 계획 / 진행 / 완료 를 각각의 구역으로 나눠 보여준다
   var html = [];
-  groups.forEach(function(name){
-    var items = visible.filter(function(p){ return p.group===name; });
+  ST.forEach(function(st){
+    if(!stOn[st]) return;
+    var items = visible.filter(function(p){ return effStatus(p)===st; });
     if(items.length===0) return;
-    html.push('<div class="grp"><h2>'+esc(name)+'<span class="n">'+items.length+"개</span></h2>");
+    // 같은 그룹끼리 붙어 보이도록 그룹 → 이름 순으로 정렬
+    items.sort(function(a,b){
+      var g = String(a.group).localeCompare(String(b.group), "ko");
+      if(g!==0) return g;
+      return String(a.number).localeCompare(String(b.number), "ko");
+    });
+    html.push('<div class="grp"><h2><span class="dot '+ST_CLS[st]+'"></span>'+esc(st)+
+              '<span class="n">'+items.length+"개</span></h2>");
     html.push('<div class="grid">');
     items.forEach(function(p){ html.push(cardHtml(p, PROJECTS.indexOf(p))); });
     html.push("</div></div>");

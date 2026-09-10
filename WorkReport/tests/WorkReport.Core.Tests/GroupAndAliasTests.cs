@@ -107,6 +107,25 @@ namespace WorkReport.Core.Tests
         }
 
         [Fact]
+        public void 규칙이_없으면_프로젝트_이름이_그룹이_된다()
+        {
+            // 대시보드 카드의 큰 글씨(=이름)로 묶이도록, 규칙에 안 걸리면 이름을 그룹으로 쓴다
+            var project = new ProjectInfo { Number = "엑시온트레이닝 월계점", Name = "Planning project" };
+            var records = new[] { Rec("Planning project", "엑시온트레이닝 월계점") };
+
+            Assert.Equal("Planning project", GroupResolver.Resolve(project, records, new List<GroupRule>()));
+            // 규칙이 걸리면 규칙이 이름보다 우선한다
+            Assert.Equal("PLANNING", GroupResolver.Resolve(project, records, Groups));
+        }
+
+        [Fact]
+        public void 이름에_줄바꿈이_있어도_그룹은_한_줄로_정리된다()
+        {
+            var project = new ProjectInfo { Number = "A", Name = "Planning\n project" };
+            Assert.Equal("Planning project", GroupResolver.Resolve(project, new WorkRecord[0], new List<GroupRule>()));
+        }
+
+        [Fact]
         public void 그룹을_못_찾으면_ETC()
         {
             var project = new ProjectInfo { Number = "일반관리" };
