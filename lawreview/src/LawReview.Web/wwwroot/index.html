@@ -97,11 +97,13 @@
       <table class="doc area" id="areaTable">
         <thead>
           <tr>
-            <th style="width:150px">동</th>
-            <th style="width:90px">층 별</th>
+            <th style="width:130px">동</th>
+            <th style="width:80px">층 별</th>
             <th>용 도</th>
-            <th style="width:120px">전용 (㎡)</th>
-            <th style="width:120px">공용 (㎡)</th>
+            <th class="col-before" style="width:110px">변경전 전용 (㎡)</th>
+            <th class="col-before" style="width:110px">변경전 공용 (㎡)</th>
+            <th style="width:115px" id="thExcl">전용 (㎡)</th>
+            <th style="width:115px" id="thCommon">공용 (㎡)</th>
             <th style="width:120px">합계 (㎡)</th>
             <th style="width:110px">비 고</th>
             <th style="width:44px"></th>
@@ -110,12 +112,17 @@
         <tbody id="areaBody"></tbody>
         <tfoot>
           <tr>
-            <th colspan="5">용적률 산정용 연면적</th>
+            <th colspan="7">용적률 산정용 연면적</th>
             <td class="total" id="areaGross">-</td>
             <td colspan="2" class="sub">연면적 제외 층은 비고에서 제외 표시</td>
           </tr>
+          <tr class="opt-change">
+            <th colspan="7">변경전 연면적 / 증감</th>
+            <td class="total" id="areaBefore">-</td>
+            <td colspan="2" class="sub" id="areaDelta"></td>
+          </tr>
           <tr>
-            <th colspan="5">전체 바닥면적 합계</th>
+            <th colspan="7">전체 바닥면적 합계</th>
             <td class="total" id="areaTotal">-</td>
             <td colspan="2"></td>
           </tr>

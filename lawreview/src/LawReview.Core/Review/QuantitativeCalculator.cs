@@ -65,7 +65,51 @@ public static class QuantitativeCalculator
         if (o.MaxGrossFloorArea is double legalGfa)
             o.ParkingAtLegalMax = CalculateParking(legalGfa, p.Parking, isLegalColumn: true);
 
+        if (p.HasExisting) ApplyExisting(o, p);
+
         return o;
+    }
+
+    /// <summary>
+    /// 신축이 아닐 때(리모델링·증축·용도변경) **변경전** 값과 증감을 채운다.
+    ///
+    /// 법정 한도 검토는 변경후(전체) 기준이다 — 기존 부분도 함께 적법해야 하기 때문이다.
+    /// 다만 **주차는 변경전·변경후를 각각 산정해 그 차이를 함께 낸다.** 주차장법 시행령
+    /// 제6조제4항이 용도변경에 대해 "변경 후 주차대수 − 변경 전 주차대수"를 추가 확보하도록
+    /// 정하고 있고, 증축도 실무에서 같은 방식으로 본다.
+    ///
+    /// **추가 확보가 실제로 필요한지는 판정하지 않는다** — 같은 조 단서에 면제 사유가
+    /// 여럿 있고(사용승인 5년 경과 1천㎡ 미만 등) 건축물마다 사정이 다르다(원칙 5).
+    /// 코드는 숫자만 내고 판단은 AI·사람이 한다.
+    /// </summary>
+    private static void ApplyExisting(DesignOverview o, ProjectInput p)
+    {
+        o.ExistingGrossFloorArea = p.ExistingGrossFloorArea;
+        o.GrossFloorAreaDelta = p.GrossFloorAreaDelta;
+        o.ExistingGrossAreaFormula = $"{N(p.ExistingGrossFloorArea)} m²";
+        o.GrossAreaChangeFormula =
+            $"기존 {N(p.ExistingGrossFloorArea)} + {(p.GrossFloorAreaDelta >= 0 ? "증가" : "감소")} " +
+            $"{N(Math.Abs(p.GrossFloorAreaDelta))} = {N(p.GrossFloorArea)} m²";
+
+        if (p.ExistingBuildingArea > 0 && p.SiteArea > 0)
+        {
+            o.ExistingCoverageRatio = p.ExistingBuildingArea / p.SiteArea * 100.0;
+            o.ExistingCoverageFormula =
+                $"{N(p.ExistingBuildingArea)} m² / {N(p.SiteArea)} m² x 100 = {N(o.ExistingCoverageRatio.Value)} %";
+        }
+        if (p.SiteArea > 0)
+        {
+            o.ExistingFloorAreaRatio = p.ExistingGrossFloorArea / p.SiteArea * 100.0;
+            o.ExistingFloorAreaRatioFormula =
+                $"{N(p.ExistingGrossFloorArea)} m² / {N(p.SiteArea)} m² x 100 = {N(o.ExistingFloorAreaRatio.Value)} %";
+        }
+
+        o.ExistingParking = CalculateParking(p.ExistingGrossFloorArea, p.Parking);
+        var added = o.Parking.TotalSpaces - o.ExistingParking.TotalSpaces;
+        o.AdditionalParkingSpaces = added;
+        o.AdditionalParkingFormula =
+            $"변경후 {o.Parking.TotalSpaces} 대 - 변경전 {o.ExistingParking.TotalSpaces} 대 = {added} 대" +
+            (added > 0 ? " 추가 확보 대상" : " (증가분 없음)");
     }
 
     /// <summary>
@@ -165,6 +209,25 @@ public sealed class DesignOverview
 
     public ParkingResult Parking { get; set; } = new();
     public ParkingResult? ParkingAtLegalMax { get; set; }
+
+    // ── 신축이 아닐 때만 채워지는 변경전·증감 값 ────────────────────────────
+    public double? ExistingGrossFloorArea { get; set; }
+    public string? ExistingGrossAreaFormula { get; set; }
+    /// <summary>증감 연면적 (변경후 − 변경전). 증축이면 증축 면적.</summary>
+    public double? GrossFloorAreaDelta { get; set; }
+    /// <summary>"기존 1,200.00 + 증가 300.00 = 1,500.00 m²" 표기.</summary>
+    public string? GrossAreaChangeFormula { get; set; }
+
+    public double? ExistingCoverageRatio { get; set; }
+    public string? ExistingCoverageFormula { get; set; }
+    public double? ExistingFloorAreaRatio { get; set; }
+    public string? ExistingFloorAreaRatioFormula { get; set; }
+
+    /// <summary>변경전 연면적 기준 법정 주차대수.</summary>
+    public ParkingResult? ExistingParking { get; set; }
+    /// <summary>추가로 확보해야 할 수 있는 주차대수 (변경후 − 변경전). 면제 여부는 판정하지 않는다.</summary>
+    public int? AdditionalParkingSpaces { get; set; }
+    public string? AdditionalParkingFormula { get; set; }
 }
 
 public sealed class ParkingResult

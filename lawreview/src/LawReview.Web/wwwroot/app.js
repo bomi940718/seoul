@@ -156,12 +156,25 @@ function renderAreaTable() {
     tr.appendChild(areaCell(i, "bldg", "동"));
     tr.appendChild(areaCell(i, "floor", "층"));
     tr.appendChild(areaCell(i, "use", "용도"));
+    // 신축이 아니면 기존 면적을 함께 입력한다 (CSS가 신축 모드에서 이 열을 감춘다)
+    tr.appendChild(areaCell(i, "beforeExcl", "0.00", true, "col-before"));
+    tr.appendChild(areaCell(i, "beforeCommon", "0.00", true, "col-before"));
     tr.appendChild(areaCell(i, "excl", "0.00", true));
     tr.appendChild(areaCell(i, "common", "0.00", true));
 
     const sum = document.createElement("td");
     sum.className = "total";
     sum.textContent = fmt(num(f.excl) + num(f.common));
+    // 증감은 한눈에 보여야 한다 — 증축 검토의 핵심 숫자다.
+    if (state.mode !== "신축") {
+      const delta = num(f.excl) + num(f.common) - num(f.beforeExcl) - num(f.beforeCommon);
+      if (delta) {
+        const d = document.createElement("div");
+        d.className = "sub";
+        d.textContent = (delta > 0 ? "+" : "") + fmt(delta);
+        sum.appendChild(d);
+      }
+    }
     tr.appendChild(sum);
 
     // 연면적 제외 여부 (PIT 등)
@@ -189,8 +202,9 @@ function renderAreaTable() {
   refreshAreaTotals();
 }
 
-function areaCell(i, field, ph, isNum) {
+function areaCell(i, field, ph, isNum, cls) {
   const td = document.createElement("td");
+  if (cls) td.className = cls;
   const d = document.createElement("div");
   d.className = "cell" + (isNum ? " num" : "");
   d.contentEditable = "true";
@@ -241,6 +255,44 @@ function refreshAreaTotals() {
   const total = state.floors.reduce((s, f) => s + num(f.excl) + num(f.common), 0);
   $("#areaGross").textContent = gross ? fmt(gross) : "-";
   $("#areaTotal").textContent = total ? fmt(total) : "-";
+
+  // 변경전 연면적과 증감 (신축이 아닐 때만 보이는 줄)
+  const before = existingGrossArea();
+  $("#areaBefore").textContent = before ? fmt(before) : "-";
+  const delta = gross - before;
+  $("#areaDelta").textContent = before
+    ? `증감 ${delta >= 0 ? "+" : ""}${fmt(delta)} ㎡`
+    : "변경전 면적을 입력하면 증감이 계산됩니다";
+}
+
+/// 변경전 연면적 (연면적 제외 층은 뺀다 — 변경후와 같은 기준이어야 증감이 맞다)
+const existingGrossArea = () => state.floors
+  .filter((f) => !f.exclude)
+  .reduce((s, f) => s + num(f.beforeExcl) + num(f.beforeCommon), 0);
+
+/// 면적표를 동 단위로 묶어 엔진 모델(Buildings/Floors)로 만든다.
+/// 신축이 아니면 기존(변경전) 면적도 함께 보낸다 — 엔진이 증감과 변경전 기준을 계산한다.
+function floorsByBuilding() {
+  const byBldg = new Map();
+  for (const f of state.floors) {
+    if (!num(f.excl) && !num(f.common) && !num(f.beforeExcl) && !num(f.beforeCommon)) continue;
+    const name = f.bldg || "동";
+    if (!byBldg.has(name)) byBldg.set(name, []);
+    byBldg.get(name).push({
+      floorLabel: f.floor, use: f.use,
+      exclusiveArea: num(f.excl), commonArea: num(f.common),
+      existingExclusiveArea: num(f.beforeExcl), existingCommonArea: num(f.beforeCommon),
+      excludeFromGrossArea: !!f.exclude,
+    });
+  }
+  return byBldg;
+}
+
+/// 면적표 머리글을 모드에 맞춘다 (신축은 "전용", 그 외는 "변경후 전용").
+function syncAreaHeaders() {
+  const after = state.mode !== "신축";
+  $("#thExcl").textContent = after ? "변경후 전용 (㎡)" : "전용 (㎡)";
+  $("#thCommon").textContent = after ? "변경후 공용 (㎡)" : "공용 (㎡)";
 }
 
 const fmt = (v) => (v || 0).toLocaleString("ko-KR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -260,17 +312,7 @@ async function doRecalc() {
   applyLandscapeRule();
 
   // 면적표를 동 단위로 묶어 엔진 모델(Buildings/Floors)로 보낸다.
-  const byBldg = new Map();
-  for (const f of state.floors) {
-    if (!num(f.excl) && !num(f.common)) continue;
-    const name = f.bldg || "동";
-    if (!byBldg.has(name)) byBldg.set(name, []);
-    byBldg.get(name).push({
-      floorLabel: f.floor, use: f.use,
-      exclusiveArea: num(f.excl), commonArea: num(f.common),
-      excludeFromGrossArea: !!f.exclude,
-    });
-  }
+  const byBldg = floorsByBuilding();
 
   const payload = {
     projectName: state.project.projectName,
@@ -280,7 +322,9 @@ async function doRecalc() {
     city: state.project.city,
     siteArea,
     primaryUse: state.project.primaryUse,
+    mode: state.mode,
     plannedBuildingArea: buildingAreaInput(),
+    existingBuildingArea: num(state.values.buildingArea?.before),
     zoning: {
       maxCoverageRatio: num(state.values.coverage?.legal) || null,
       maxFloorAreaRatio: num(state.values.floorRatio?.legal) || null,
@@ -308,9 +352,13 @@ async function doRecalc() {
       const legalTarget = row.legal === "derived" ? "legal" : "legalCalc";
       if (v?.planned != null) setCalc(key, planTarget, v.planned);
       if (v?.legal != null) setCalc(key, legalTarget, v.legal);
+      // 변경전 열도 같은 규칙으로 채운다(입력 칸은 사람 것이므로 보조 칸에만 쓴다).
+      if (v?.before != null) setCalc(key, row.plan === "derived" ? "before" : "beforeCalc", v.before);
     }
     warnCompliance(o.compliance);
-    status(`계산 갱신됨 — 연면적 ${fmt(o.grossFloorArea)} ㎡`);
+    status(o.change
+      ? `계산 갱신됨 — ${o.change.grossArea} / 주차 ${o.change.additionalParking}`
+      : `계산 갱신됨 — 연면적 ${fmt(o.grossFloorArea)} ㎡`);
   } catch { /* 입력 중 부분 오류는 무시 */ }
 }
 
@@ -441,6 +489,9 @@ $("#modes").addEventListener("click", (e) => {
   b.classList.add("active");
   state.mode = b.dataset.mode;
   document.body.dataset.mode = state.mode;
+  syncAreaHeaders();
+  renderAreaTable();   // 증감 표시가 모드에 따라 달라진다
+  recalc();            // 기준 열(계획/변경후)이 바뀌므로 다시 계산한다
   status(`${state.mode} 모드`);
 });
 
@@ -507,17 +558,7 @@ async function pollReview(jobId, stage = "basic") {
 }
 
 function buildProjectPayload() {
-  const byBldg = new Map();
-  for (const f of state.floors) {
-    if (!num(f.excl) && !num(f.common)) continue;
-    const name = f.bldg || "동";
-    if (!byBldg.has(name)) byBldg.set(name, []);
-    byBldg.get(name).push({
-      floorLabel: f.floor, use: f.use,
-      exclusiveArea: num(f.excl), commonArea: num(f.common),
-      excludeFromGrossArea: !!f.exclude,
-    });
-  }
+  const byBldg = floorsByBuilding();
   const zones = (state.project.useZones || "").split(",").map((s) => s.trim()).filter(Boolean);
   return {
     projectName: state.project.projectName,
@@ -530,7 +571,9 @@ function buildProjectPayload() {
     primaryUse: state.project.primaryUse,
     allowedUse: state.project.allowedUse || null,
     disallowedUse: state.project.disallowedUse || null,
+    mode: state.mode,
     plannedBuildingArea: buildingAreaInput(),
+    existingBuildingArea: num(state.values.buildingArea?.before),
     plannedFloorsAbove: parseInt(num(state.values.scale?.[planSlot()])) || 0,
     zoning: {
       maxCoverageRatio: num(state.values.coverage?.legal) || null,
@@ -788,6 +831,7 @@ function restore(s) {
   renderAreaTable();
   bindHeadFields();
   stampProject();
+  syncAreaHeaders();
   if (state.result) renderResult(state.result);
 }
 
@@ -871,6 +915,7 @@ renderScaleTable();
 renderAreaTable();
 bindHeadFields();
 stampProject();
+syncAreaHeaders();
 
 // 앱을 닫았다 열어도 직전 작업이 남아 있어야 한다.
 try {

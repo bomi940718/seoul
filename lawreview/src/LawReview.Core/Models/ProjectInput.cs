@@ -1,10 +1,30 @@
+using System.Text.Json.Serialization;
+
 namespace LawReview.Core.Models;
+
+/// <summary>
+/// 공사의 종류. 화면 상단 모드와 같고, 계산·표기가 여기에 따라 달라진다.
+///
+/// 신축이 아니면 설계개요·면적표가 **변경전 / 변경후** 두 벌이 된다.
+/// 법정 검토는 변경후를 기준으로 하되, 주차처럼 증감분이 의미를 갖는 항목은 둘 다 산정한다.
+/// </summary>
+[JsonConverter(typeof(JsonStringEnumConverter))]
+public enum ProjectMode
+{
+    신축,
+    리모델링,
+    증축,
+    용도변경,
+}
 
 /// <summary>
 /// 법규검토 대상 프로젝트의 입력 정보. 검토서의 "설계개요" 블록에 대응한다.
 /// </summary>
 public sealed class ProjectInput
 {
+    /// <summary>공사 종류. 신축이 아니면 기존 건축물 값이 함께 들어온다.</summary>
+    public ProjectMode Mode { get; set; } = ProjectMode.신축;
+
     public string ProjectName { get; set; } = "";      // 사업명
     public string Client { get; set; } = "";           // 건축주
     public string SiteAddress { get; set; } = "";      // 대지위치 (지번 주소)
@@ -34,13 +54,26 @@ public sealed class ProjectInput
     /// </summary>
     public List<DistrictPlanFile> DistrictPlanFiles { get; set; } = new();
 
-    /// <summary>연면적 산입 대상 층 면적 합계 (연면적 제외 층 제외)</summary>
+    /// <summary>기존 건축면적 (㎡). 신축이 아닐 때만 쓴다.</summary>
+    public double ExistingBuildingArea { get; set; }
+
+    /// <summary>연면적 산입 대상 층 면적 합계 (연면적 제외 층 제외). 신축이 아니면 **변경후** 값이다.</summary>
     public double GrossFloorArea =>
         Buildings.Sum(b => b.Floors.Where(f => !f.ExcludeFromGrossArea).Sum(f => f.TotalArea));
 
     /// <summary>전체 바닥면적 합계 (연면적 제외 층 포함)</summary>
     public double TotalFloorArea =>
         Buildings.Sum(b => b.Floors.Sum(f => f.TotalArea));
+
+    /// <summary>기존(변경전) 연면적. 신축이면 0이다.</summary>
+    public double ExistingGrossFloorArea =>
+        Buildings.Sum(b => b.Floors.Where(f => !f.ExcludeFromGrossArea).Sum(f => f.ExistingTotalArea));
+
+    /// <summary>증감 연면적 (변경후 − 변경전). 증축이면 증축 면적이다.</summary>
+    public double GrossFloorAreaDelta => GrossFloorArea - ExistingGrossFloorArea;
+
+    /// <summary>신축이 아니고 기존 면적이 실제로 입력되어 있는지.</summary>
+    public bool HasExisting => Mode != ProjectMode.신축 && ExistingGrossFloorArea > 0;
 }
 
 /// <summary>
@@ -74,12 +107,20 @@ public sealed class FloorArea
 {
     public string FloorLabel { get; set; } = "";       // 층 (예: PIT, 1층, 지붕층)
     public string Use { get; set; } = "";              // 용도
-    public double ExclusiveArea { get; set; }          // 전용 (㎡)
-    public double CommonArea { get; set; }             // 공용 (㎡)
+    public double ExclusiveArea { get; set; }          // 전용 (㎡) — 신축이 아니면 변경후 값
+    public double CommonArea { get; set; }             // 공용 (㎡) — 신축이 아니면 변경후 값
     public bool ExcludeFromGrossArea { get; set; }     // 연면적 제외 여부 (PIT 등)
     public string? Note { get; set; }                  // 비고
 
+    /// <summary>기존(변경전) 전용면적. 신축이면 0.</summary>
+    public double ExistingExclusiveArea { get; set; }
+    /// <summary>기존(변경전) 공용면적. 신축이면 0.</summary>
+    public double ExistingCommonArea { get; set; }
+
     public double TotalArea => ExclusiveArea + CommonArea;
+    public double ExistingTotalArea => ExistingExclusiveArea + ExistingCommonArea;
+    /// <summary>증감 면적 (변경후 − 변경전).</summary>
+    public double DeltaArea => TotalArea - ExistingTotalArea;
 }
 
 /// <summary>

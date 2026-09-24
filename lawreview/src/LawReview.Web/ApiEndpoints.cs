@@ -111,22 +111,28 @@ public static class ApiEndpoints
             return Results.Ok(new
             {
                 grossFloorArea = o.GrossFloorArea,
+                existingGrossFloorArea = o.ExistingGrossFloorArea,
+                grossFloorAreaDelta = o.GrossFloorAreaDelta,
                 rows = new Dictionary<string, object?>
                 {
                     ["buildingArea"] = Row(o.BuildingAreaFormula, o.MaxBuildingAreaFormula is { } f
                         ? $"{f} 이하" : null),
                     ["coverage"] = Row(o.CoverageFormula,
-                        project.Zoning.MaxCoverageRatio is double c ? $"{c:0.00} % 이하" : null),
+                        project.Zoning.MaxCoverageRatio is double c ? $"{c:0.00} % 이하" : null,
+                        o.ExistingCoverageFormula),
                     ["grossArea"] = Row(o.GrossAreaFormula, o.MaxGrossFloorAreaFormula is { } g
-                        ? $"{g} 이하" : null),
+                        ? $"{g} 이하" : null, o.ExistingGrossAreaFormula),
                     ["floorRatio"] = Row(o.FloorAreaRatioFormula,
-                        project.Zoning.MaxFloorAreaRatio is double r ? $"{r:0.00} % 이하" : null),
+                        project.Zoning.MaxFloorAreaRatio is double r ? $"{r:0.00} % 이하" : null,
+                        o.ExistingFloorAreaRatioFormula),
                     ["landscape"] = Row(null, o.LandscapeFormula),
-                    ["parkingOut"] = Row(o.Parking.TotalFormula, legalParking?.TotalFormula),
+                    ["parkingOut"] = Row(o.Parking.TotalFormula, legalParking?.TotalFormula,
+                        o.ExistingParking?.TotalFormula),
                     ["parkingDis"] = Row(o.Parking.DisabledFormula, legalParking?.DisabledFormula),
                     ["parkingExt"] = Row(o.Parking.ExpandedFormula, legalParking?.ExpandedFormula),
                     ["parkingEco"] = Row(o.Parking.EcoFormula, legalParking?.EcoFormula),
-                    ["parkingAll"] = Row(o.Parking.TotalDisplay, legalParking?.TotalDisplay),
+                    ["parkingAll"] = Row(o.Parking.TotalDisplay, legalParking?.TotalDisplay,
+                        o.ExistingParking?.TotalDisplay),
                 },
                 compliance = new
                 {
@@ -134,9 +140,18 @@ public static class ApiEndpoints
                     floorArea = o.FloorAreaCompliant,
                     floors = o.FloorsCompliant,
                 },
+                // 신축이 아닐 때만 채워진다. 추가 확보 필요 여부는 판정하지 않는다
+                // (주차장법 시행령 제6조제4항 단서에 면제 사유가 여럿 있다 — 원칙 5).
+                change = o.GrossAreaChangeFormula is null ? null : new
+                {
+                    grossArea = o.GrossAreaChangeFormula,
+                    additionalParking = o.AdditionalParkingFormula,
+                    additionalParkingSpaces = o.AdditionalParkingSpaces,
+                },
             });
 
-            static object Row(string? planned, string? legal) => new { planned, legal };
+            static object Row(string? planned, string? legal, string? before = null)
+                => new { planned, legal, before };
         });
 
         // ── 검토 실행 (백그라운드 + 진행상황 폴링) ────────────────────────

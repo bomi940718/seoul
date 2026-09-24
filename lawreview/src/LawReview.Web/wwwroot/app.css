@@ -81,7 +81,8 @@ td .formula{border-top:1px dashed var(--line-soft);background:#fbfbfc;font-size:
 tr.sub-row th{background:#fcfcfd;font-weight:500;font-size:12px;color:#444;padding-left:16px;text-align:left}
 
 /* 모드별 열 표시 (신축=계획/법정, 그 외=변경전/변경후/법정) */
-body[data-mode="신축"] .col-before,body[data-mode="신축"] .col-after{display:none}
+body[data-mode="신축"] .col-before,body[data-mode="신축"] .col-after,
+body[data-mode="신축"] .opt-change{display:none}
 body:not([data-mode="신축"]) .col-plan{display:none}
 
 /* ── 면적표 ── */
