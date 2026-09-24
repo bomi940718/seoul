@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using System.Text;
 using LawReview.Core.Ai;
 using LawReview.Core.LawApi;
@@ -82,8 +83,14 @@ public sealed class ReviewEngine
                     row.Citations.Add(await GetAnnexCitationAsync(lawText, lawName, annexName, project, ct));
             }
 
-            // 1-b) 별표에 값이 있는 항목은 법 위계대로 조례 별표까지 내려가 실제 기준을 붙인다.
-            if (item.Id == "setback") await EnrichSetbackAsync(row, project, ct);
+            // 1-b) 값이 조례에 있는 항목은 법 위계대로 내려가 실제 기준을 붙인다.
+            //      (조문만 인용하면 "…기준은 별표 3과 같다"처럼 숫자가 없는 인용이 된다)
+            switch (item.Id)
+            {
+                case "setback": await EnrichSetbackAsync(row, project, ct); break;
+                case "open_space": await EnrichOpenSpaceAsync(row, project, ct); break;
+                case "sunlight_height": await EnrichSunlightAsync(row, project, ct); break;
+            }
 
             // 2) 판정.
             switch (item.Judgment)
@@ -242,6 +249,67 @@ public sealed class ReviewEngine
     }
 
     /// <summary>
+    /// 건축조례를 **적용 우선순위 순서**(기초 → 광역)로 하나씩 돌려준다.
+    /// 조례에 값이 있는 항목은 모두 이 순서로 내려가며 먼저 값을 주는 조례를 쓴다
+    /// (법 위계 — 3절 대원칙). 조회에 실패한 지자체는 건너뛴다.
+    /// </summary>
+    private async IAsyncEnumerable<LawText> BuildingOrdinancesAsync(
+        ProjectInput project, [EnumeratorCancellation] CancellationToken ct)
+    {
+        foreach (var authority in Municipality.OrdinanceHierarchy(project.Province, project.City))
+        {
+            var ordinance = await GetLawCachedAsync($"{authority} 건축 조례", LawTarget.Ordinance, ct);
+            if (ordinance is not null) yield return ordinance;
+        }
+    }
+
+    /// <summary>
+    /// 공개 공지(건축법 제43조) 항목에 **조례가 정한 면적 비율과 의무 면적**을 붙인다.
+    ///
+    /// 시행령 제27조의2제2항은 "대지면적의 100분의 10 이하의 범위에서 건축조례로 정한다"라고만 해
+    /// **폴백할 값이 모법에 없다.** 조례에서 못 찾으면 기준 없이 두고(확인필요),
+    /// 표가 이미지인 조례(안양)는 그 사실을 그대로 알린다.
+    /// </summary>
+    private async Task EnrichOpenSpaceAsync(ReviewRow row, ProjectInput project, CancellationToken ct)
+    {
+        await foreach (var ordinance in BuildingOrdinancesAsync(project, ct))
+        {
+            var standard = OpenSpaceRatioResolver.Resolve(ordinance);
+            if (standard.Rules.Count == 0 && standard.Note is null) continue;
+
+            if (standard.CriterionText(project.PrimaryUse, project.SiteArea) is string criterion)
+            {
+                Report($"공개공지 비율: {standard.Basis}");
+                row.CriterionText = criterion;
+                row.CalculationText ??= standard.For(project.PrimaryUse)?.Text;
+            }
+            else if (standard.Note is not null)
+            {
+                Report($"공개공지 비율: {standard.Basis} — 표가 이미지라 읽지 못함");
+                row.CriterionText = $"{standard.Note}\n({standard.Basis})";
+            }
+            return;
+        }
+    }
+
+    /// <summary>
+    /// 일조 등의 확보를 위한 높이 제한(건축법 제61조) 항목에 **조례가 정한 이격거리·인동거리**를 붙인다.
+    /// 인동거리 배수는 지자체마다 실제로 다르다(대전 1배 / 안양 0.8배 / 서울 0.5배).
+    /// </summary>
+    private async Task EnrichSunlightAsync(ReviewRow row, ProjectInput project, CancellationToken ct)
+    {
+        await foreach (var ordinance in BuildingOrdinancesAsync(project, ct))
+        {
+            var standard = SunlightHeightResolver.Resolve(ordinance);
+            if (standard.CriterionText() is not string criterion) continue;
+
+            Report($"일조 높이제한: {standard.Basis}");
+            row.CriterionText = criterion;
+            return;
+        }
+    }
+
+    /// <summary>
     /// 대지 안의 공지(건축법 제58조) 항목에 **실제 적용 이격거리**를 붙인다.
     ///
     /// 조례 조문은 "…기준은 별표 3과 같다"로 끝나 그것만 인용하면 숫자가 하나도 없다.
@@ -254,12 +322,8 @@ public sealed class ReviewEngine
     private async Task EnrichSetbackAsync(ReviewRow row, ProjectInput project, CancellationToken ct)
     {
         var ordinances = new List<OrdinanceAnnex>();
-        foreach (var authority in Municipality.OrdinanceHierarchy(project.Province, project.City))
+        await foreach (var ordinance in BuildingOrdinancesAsync(project, ct))
         {
-            var name = $"{authority} 건축 조례";
-            var ordinance = await GetLawCachedAsync(name, LawTarget.Ordinance, ct);
-            if (ordinance is null) continue;
-
             // 조례 별표는 한 HWP에 [별표 1]…[별표 N]이 모두 들어 있기도 하고 별표마다 파일이 따로이기도 하다.
             var lines = new List<string>();
             string? source = null;

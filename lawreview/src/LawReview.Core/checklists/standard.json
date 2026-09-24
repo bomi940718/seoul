@@ -48,7 +48,8 @@
     "legalCriterion": "전용주거·일반주거지역에서 정북방향 이격",
     "basis": [
       { "lawName": "건축법", "article": "61", "target": "Law" },
-      { "lawName": "건축법 시행령", "article": "86", "target": "Law" }
+      { "lawName": "건축법 시행령", "article": "86", "target": "Law" },
+      { "lawName": "{시} 건축 조례", "articleTitleKeyword": "일조", "target": "Ordinance" }
     ]
   },
   {
