@@ -136,7 +136,10 @@ function bindHeadFields() {
   $$(".head .cell[data-field]").forEach((el) => {
     const f = el.dataset.field;
     el.textContent = state.project[f] || "";
-    el.addEventListener("input", () => { state.project[f] = el.textContent.trim(); });
+    el.addEventListener("input", () => {
+      state.project[f] = el.textContent.trim();
+      if (f === "projectName") stampProject();
+    });
     el.addEventListener("blur", recalc);
   });
 }
@@ -418,7 +421,18 @@ function setField(f, v) {
   state.project[f] = v;
   const el = document.querySelector(`.head .cell[data-field="${f}"]`);
   if (el) el.textContent = v;
+  if (f === "projectName") stampProject();
 }
+
+/// 인쇄물 머리에 사업명을 남긴다 — 탭마다 쪽이 갈리므로 여러 장이 흩어져도 어느 건인지 알아야 한다.
+/// (CSS의 .sheet[data-project]::before가 이 값을 찍는다)
+function stampProject() {
+  const name = (state.project.projectName || "").trim();
+  $$(".sheet").forEach((s) => { s.dataset.project = name; });
+}
+
+// 인쇄는 화면 그대로 쓴다(별도 서식 생성 없음). 쪽 나눔·머리행 반복은 app.css의 @media print가 한다.
+$("#btnPrint").addEventListener("click", () => { stampProject(); window.print(); });
 
 // ── 모드 · 탭 ────────────────────────────────────────────────
 $("#modes").addEventListener("click", (e) => {
@@ -773,6 +787,7 @@ function restore(s) {
   renderScaleTable();
   renderAreaTable();
   bindHeadFields();
+  stampProject();
   if (state.result) renderResult(state.result);
 }
 
@@ -855,6 +870,7 @@ document.body.dataset.mode = state.mode;
 renderScaleTable();
 renderAreaTable();
 bindHeadFields();
+stampProject();
 
 // 앱을 닫았다 열어도 직전 작업이 남아 있어야 한다.
 try {

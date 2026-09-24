@@ -171,8 +171,50 @@ dialog::backdrop{background:rgba(0,0,0,.35)}
 .dlg .hint{margin:2px 0 12px;color:var(--muted);font-size:11.5px}
 .dlg menu{display:flex;justify-content:flex-end;gap:8px;padding:0;margin:16px 0 0}
 
+/* ── 인쇄 ──────────────────────────────────────────────────────────
+   검토서는 A4 세로로 출력되고 협력사와 공유된다. 화면은 한 화면 안에서 스크롤하지만
+   인쇄물은 **탭 하나 = 검토서 한 장**이어야 하므로 탭마다 쪽을 나눈다.
+
+   주의할 점 셋:
+    · html,body의 height:100%와 flex는 인쇄에서 첫 쪽만 나오게 만든다 → 반드시 푼다.
+    · 표가 쪽 경계에서 잘리면 읽을 수 없다 → 행은 쪼개지 않고 머리행은 쪽마다 반복한다.
+    · 입력 색(숫자 빨강·문자 파랑)은 실무 서식 규약이므로 인쇄에서도 살린다. */
+@page{size:A4 portrait;margin:14mm 12mm}
+
 @media print{
-  .topbar,.tabs,.statusbar,td.act{display:none}
-  .page{display:block!important}
-  .sheet{border:0;max-width:none}
+  html,body{height:auto;background:#fff}
+  body{display:block;font-size:10.5pt;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  main{overflow:visible;padding:0}
+
+  /* 화면 조작용 요소는 인쇄하지 않는다 */
+  .topbar,.tabs,.statusbar,td.act,.sheet-tools,.hint-inline,.row-del,.revert,dialog{display:none!important}
+  .cell:empty::before{content:""}                 /* 입력 안내문(data-ph)은 빈칸으로 */
+  tr.row-edited > td:first-child{box-shadow:none} /* 수정 표시는 화면용 — 값만 남긴다 */
+  .cell:focus{background:none;box-shadow:none}
+
+  /* 탭마다 새 쪽. 아직 검토하지 않은 탭(안내문만 있는 탭)은 통째로 빼둔다. */
+  .page{display:block!important;break-before:page}
+  .page:first-of-type{break-before:auto}
+  .page:has(td.empty),.page:has(.todo){display:none!important}
+
+  .sheet{border:0;max-width:none;padding:0;background:none;break-inside:auto}
+  .sheet + .sheet{margin-top:10mm}
+  .sheet-title{font-size:12pt;margin-bottom:6px}
+
+  /* 사업명을 시트 머리에 남긴다 — 여러 장이 흩어져도 어느 건인지 알 수 있어야 한다 */
+  .sheet[data-project]:not([data-project=""])::before{
+    content:attr(data-project);display:block;text-align:right;
+    font-size:9pt;color:#555;border-bottom:.5pt solid #999;padding-bottom:2px;margin-bottom:8px;
+  }
+
+  /* 표: 행을 쪼개지 않고, 여러 쪽에 걸치면 머리행을 반복한다 */
+  table.doc{break-inside:auto}
+  table.doc thead{display:table-header-group}
+  table.doc tfoot{display:table-row-group}
+  table.doc tr,.cite,.detail-group h3{break-inside:avoid}
+  table.doc th,table.doc td{border-color:#888}
+  .detail-group{break-inside:auto}
+
+  /* 판정은 인쇄물에서 글자로만 보이면 된다 */
+  .verdict-pick{appearance:none;border:0;padding:1px 6px}
 }
