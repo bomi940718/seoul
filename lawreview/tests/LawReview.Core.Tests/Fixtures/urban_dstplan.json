@@ -1,0 +1,28 @@
+{
+ "content": [
+  {
+   "zoneName": "봉천지역중심 지구단위계획구역",
+   "locationName": "관악구 봉천동 857-1번지 일대",
+   "areaPrev": 573347,
+   "areaChange": 19841,
+   "areaAfter": 593188,
+   "recordCode": "11620UTZ202508280001",
+   "siteCode": "11620",
+   "dNoticeCode": "11620NTC202603250002",
+   "firstDateInfo": "서고 96-195호",
+   "tnNtfc": {
+    "noticeCode": "11620NTC202603250002",
+    "noticeNo": "2026-290",
+    "noticeDate": "2026-05-28T09:00:00.000",
+    "title": "도시관리계획(봉천지역중심 지구단위계획구역 및 계획) 결정(변경) 및 지형도면 고시",
+    "subject": "서울특별시 | 2026-290",
+    "tnNtfcImage": {
+     "aImageName": "서울특별시_제2026-290호_고시.pdf",
+     "aImagePath": "UpisArchive/DATA/PM/pdf/11620NTC202603250002"
+    }
+   }
+  }
+ ],
+ "totalElements": 1,
+ "totalPages": 1
+}

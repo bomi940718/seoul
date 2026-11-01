@@ -1,0 +1,2 @@
+# 배치 파일은 CRLF가 아니면 cmd.exe가 줄을 잘못 읽는다 (실제로 깨졌음)
+*.bat text eol=crlf

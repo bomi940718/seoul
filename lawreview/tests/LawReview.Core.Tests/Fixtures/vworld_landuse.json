@@ -1,0 +1,43 @@
+{
+ "landUses": {
+  "field": [
+   {
+    "prposAreaDstrcCodeNm": "도시지역",
+    "cnflcAt": "1",
+    "cnflcAtNm": "포함",
+    "pnu": "3020015200104070005"
+   },
+   {
+    "prposAreaDstrcCodeNm": "산업육성구역",
+    "cnflcAt": "1",
+    "cnflcAtNm": "포함",
+    "pnu": "3020015200104070005"
+   },
+   {
+    "prposAreaDstrcCodeNm": "가축사육제한구역",
+    "cnflcAt": "1",
+    "cnflcAtNm": "포함",
+    "pnu": "3020015200104070005"
+   },
+   {
+    "prposAreaDstrcCodeNm": "연구개발특구",
+    "cnflcAt": "1",
+    "cnflcAtNm": "포함",
+    "pnu": "3020015200104070005"
+   },
+   {
+    "prposAreaDstrcCodeNm": "지구단위계획구역",
+    "cnflcAt": "1",
+    "cnflcAtNm": "포함",
+    "pnu": "3020015200104070005"
+   },
+   {
+    "prposAreaDstrcCodeNm": "일반공업지역",
+    "cnflcAt": "1",
+    "cnflcAtNm": "포함",
+    "pnu": "3020015200104070005"
+   }
+  ],
+  "totalCount": "6"
+ }
+}

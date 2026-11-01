@@ -1,0 +1,20 @@
+{
+ "response": {
+  "status": "OK",
+  "refined": {
+   "text": "대전광역시 유성구 둔곡동 407-5",
+   "structure": {
+    "level0": "대한민국",
+    "level1": "대전광역시",
+    "level2": "유성구",
+    "level3": "",
+    "level4L": "둔곡동",
+    "level4LC": "3020015200104070005",
+    "level4A": "구즉동",
+    "level4AC": "3020058000",
+    "level5": "407-5",
+    "detail": ""
+   }
+  }
+ }
+}
