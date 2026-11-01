@@ -358,6 +358,49 @@ public sealed class ReviewEngine
     }
 
     /// <summary>
+    /// 고시문 첨부를 받아 **결정조서 본문**을 인용에 붙인다(한 건만).
+    ///
+    /// 지금까지는 링크만 걸어 사람이 파일을 따로 열어야 했다. 결정조서에는 그 구역의 용도지역·
+    /// 건폐율·용적률·면적이 들어 있고 적용 우선순위가 가장 높다(원칙 6).
+    ///
+    /// **고시문 PDF는 스캔 이미지인 경우가 많다**(서울 고시문 실측: 74쪽에 글자 2천여 자).
+    /// 그때는 값을 지어내지 않고 "본문을 읽지 못했다"고 적는다. 어느 경우든 판정은 확인필요다.
+    /// </summary>
+    private async Task AddNoticeTextCitationAsync(ReviewRow row, DistrictPlanRecord record, CancellationToken ct)
+    {
+        if (_districtPlan is null || record.NoticePdfUrl.Length == 0) return;
+
+        var temp = Path.Combine(Path.GetTempPath(), $"lawreview_notice_{Guid.NewGuid():N}");
+        try
+        {
+            Report($"고시문 본문 읽는 중 ({record.NoticeNo})...");
+            if (!await _districtPlan.DownloadNoticePdfAsync(record, temp, ct)) return;
+
+            var lines = NoticeTextExtractor.ExtractLines(await File.ReadAllBytesAsync(temp, ct));
+            var excerpt = NoticeTextExtractor.Excerpt(lines);
+
+            var body = excerpt.Length > 0
+                ? $"{record.ZoneName} — {record.NoticeNo} 결정조서 발췌\n\n{excerpt}\n\n" +
+                  $"※ 지침은 지침도(도면)와 함께 읽어야 합니다. 값은 고시문 원문으로 확인하세요.\n" +
+                  $"(원문: {record.NoticePdfUrl})"
+                : $"{record.NoticeNo} 고시문에서 본문 텍스트를 읽지 못했습니다" +
+                  $"(스캔 이미지이거나 지원하지 않는 형식). 원문을 직접 확인하세요.\n" +
+                  $"(원문: {record.NoticePdfUrl})";
+
+            row.Citations.Add(new CitedArticle("지구단위계획 결정조서", "-", record.ZoneName, body, record.NoticeDate));
+        }
+        catch (Exception ex) when (ex is HttpRequestException or IOException or TaskCanceledException
+                                   && !ct.IsCancellationRequested)
+        {
+            Report($"고시문 본문 조회 실패: {record.NoticeNo} — {ex.Message}");
+        }
+        finally
+        {
+            try { if (File.Exists(temp)) File.Delete(temp); } catch (IOException) { /* 임시 파일은 남아도 된다 */ }
+        }
+    }
+
+    /// <summary>
     /// 조례 별표 파일 링크를 모은다.
     /// 본문 조회에 별표가 딸려오면 그것을 쓰고, **하나도 없으면**(서울특별시 건축 조례가 그렇다)
     /// 자치법규 별표 검색(ordinbyl)으로 보완한다. 검색 결과에는 다른 지자체 조례도 섞이므로
@@ -434,6 +477,10 @@ public sealed class ReviewEngine
             }
             row.Reason = $"\"{keyword}\" 기준 후보 구역 {records.Count}건 조회. 해당 필지의 구역 포함 여부와 " +
                          "지침(도면 포함)은 결정도서 원문으로 직접 확인하세요. 지침도 규제는 자동 판정 대상이 아닙니다.";
+
+            // 가장 최근 고시 한 건은 본문까지 읽어 결정조서를 인용한다 — 적용 우선순위가
+            // 지구단위계획 > 조례 > 시행령(원칙 6)이라 검토에서 가장 먼저 봐야 할 값이다.
+            await AddNoticeTextCitationAsync(row, records[0], ct);
         }
         catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException or System.Text.Json.JsonException)
         {
