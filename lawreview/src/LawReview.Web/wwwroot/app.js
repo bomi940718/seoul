@@ -551,6 +551,7 @@ async function pollReview(jobId, stage = "basic") {
     if (stage === "detail") renderDetails(d.result.details);
     else renderResult(d.result);
     state.result = d.result;
+    state.amendments = null;   // 방금 현행 법령으로 다시 검토했다
     const c = d.result.counts;
     $("#runCurrent").textContent = `완료 — 적용 ${c.적용} · 해당없음 ${c.해당없음} · 확인필요 ${c.확인필요}`;
     status(`검토 완료 — ${c.total}항목 (적용 ${c.적용} / 해당없음 ${c.해당없음} / 확인필요 ${c.확인필요})`);
@@ -703,11 +704,44 @@ function overridePayload() {
     .map(([id, e]) => ({ id, ...e }));
 }
 
+// ── 법령 개정 감시 ───────────────────────────────────────────
+// 검토서는 작성 후 몇 달씩 쓰이는데 그 사이 법이 바뀌면 인용 조문이 구법이 된다.
+// 불러올 때 시행일자를 다시 맞춰 보고, 바뀐 법규를 검토법규 표에 표시한다.
+// 고치지는 않는다 — 조문 번호와 내용이 함께 바뀌었을 수 있어 다시 검토할지는 사람이 정한다.
+async function checkAmendments(projectName) {
+  const laws = state.result?.laws;
+  if (!laws?.length) return;
+
+  try {
+    const body = Object.fromEntries(laws.map((l) => [l.name, l.effectiveDate]));
+    const r = await fetch("/api/laws/check", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ laws: body }),
+    });
+    const d = await r.json();
+    if (!d.ok || !d.changed?.length) return;
+
+    state.amendments = new Map(d.changed.map((c) => [c.name, c]));
+    renderResult(state.result);   // 표에 개정 표시를 입힌다
+    status(`${projectName} — 검토 후 개정된 법규 ${d.changed.length}건: `
+      + d.changed.map((c) => c.name).join(", ") + " (다시 검토하세요)");
+  } catch { /* 개정 확인 실패가 불러오기를 막으면 안 된다 */ }
+}
+
+/// 개정된 법규의 비고 칸 문구 ("2026.07.28 시행으로 개정됨").
+function amendmentNote(name) {
+  const a = state.amendments?.get(name);
+  if (!a) return "";
+  const d = a.current;
+  const shown = d.length === 8 ? `${d.slice(0, 4)}.${d.slice(4, 6)}.${d.slice(6)}` : d;
+  return `<span class="amended">개정됨 → ${esc(shown)} 시행</span>`;
+}
+
 // ── 결과 렌더 (검토서 p4~p7) ─────────────────────────────────
 function renderResult(res) {
-  // p4 검토법규
+  // p4 검토법규 (검토 후 개정된 법규는 비고에 표시)
   fill("#lawsBody", res.laws, (l) => `<tr><td class="body-cell">${esc(l.name)}</td>
-    <td class="center">${esc(l.effectiveDate)}</td><td></td></tr>`, 3);
+    <td class="center">${esc(l.effectiveDate)}</td><td class="center">${amendmentNote(l.name)}</td></tr>`, 3);
 
   // p5 요약 / p6 인증 — 같은 5열 구성
   // 법적기준·설계기준(산정식)·판정·사유는 고칠 수 있다. 대상(근거 조문)은 인용이므로 읽기 전용.
@@ -880,6 +914,7 @@ $("#projectList").addEventListener("click", async (e) => {
     restore(s);
     $("#dlgOpen").close();
     status(`불러옴 — ${name}`);
+    checkAmendments(name);   // 저장해 둔 사이 법이 바뀌었는지 (응답을 기다리지 않는다)
   } else if (e.target.classList.contains("proj-del")) {
     if (!confirm(`"${name}" 프로젝트를 삭제할까요?`)) return;
     await fetch("/api/projects/" + encodeURIComponent(name), { method: "DELETE" });

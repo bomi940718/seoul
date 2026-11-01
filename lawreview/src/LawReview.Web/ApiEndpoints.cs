@@ -156,6 +156,41 @@ public static class ApiEndpoints
                 => new { planned, legal, before };
         });
 
+        // ── 법령 개정 감시 ───────────────────────────────────────────────
+        // 저장해 둔 검토서가 아직 현행 법령에 근거하는지 확인한다. 검토서는 작성 후 몇 달씩
+        // 쓰이는데 그 사이 법이 바뀌면 인용 조문이 구법이 된다(원칙 1이 무너진다).
+        // 바뀐 법을 알려 줄 뿐 고치지는 않는다 — 다시 검토할지는 사람이 정한다.
+        app.MapPost("/api/laws/check", async (LawCheckDto dto) =>
+        {
+            var s = AppSettings.Load();
+            if (s.MolegApiKey.Length == 0)
+                return Results.Ok(new { ok = false, message = "법제처 Open API 키(OC)가 필요합니다." });
+            if (dto.Laws is not { Count: > 0 })
+                return Results.Ok(new { ok = true, changed = Array.Empty<object>(), checkedCount = 0 });
+
+            try
+            {
+                var moleg = new MolegClient(Http, s.MolegApiKey);
+                var results = await LawAmendmentWatcher.CheckAsync(moleg, dto.Laws);
+                return Results.Ok(new
+                {
+                    ok = true,
+                    checkedCount = results.Count,
+                    uncheckedCount = results.Count(r => r.Unchecked),
+                    changed = results.Where(r => r.Changed).Select(r => new
+                    {
+                        name = r.LawName,
+                        reviewed = r.ReviewedDate,
+                        current = r.CurrentDate,
+                    }),
+                });
+            }
+            catch (Exception ex)
+            {
+                return Results.Ok(new { ok = false, message = ex.Message });
+            }
+        });
+
         // ── 검토 실행 (백그라운드 + 진행상황 폴링) ────────────────────────
         // stage=basic(기본, 주요 법규까지) | detail(장별 상세) | all
         app.MapPost("/api/review/start", (ProjectInput project, string? stage) =>
@@ -437,6 +472,9 @@ public sealed record SettingsDto(string? MolegApiKey, string? ClaudeApiKey, stri
     string? ClaudeModel, string? VworldDomain);
 
 public sealed record LookupDto(string? Address, string? PrimaryUse);
+
+/// <summary>개정 확인 요청. 법령명 → 검토 당시 시행일자.</summary>
+public sealed record LawCheckDto(Dictionary<string, string>? Laws);
 
 /// <summary>검토서 저장 요청. Overrides는 화면에서 사람이 고친 판정·사유다(없으면 AI 판정 그대로).</summary>
 public sealed record ReportRequest(ProjectInput? Project, string? Folder, string? FileName,
