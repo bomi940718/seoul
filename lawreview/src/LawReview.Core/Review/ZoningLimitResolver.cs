@@ -16,37 +16,51 @@ namespace LawReview.Core.Review;
 /// </summary>
 public static class ZoningLimitResolver
 {
-    /// <summary>조문 제목으로 찾는다. 완화·강화 조문("완화적용" 등)에 걸리지 않도록 정확한 제목을 쓴다.</summary>
-    private const string CoverageTitle = "용도지역 안에서의 건폐율";
-    private const string FarTitle = "용도지역 안에서의 용적률";
+    /// <summary>
+    /// 조문 제목의 핵심어. **제목 표기가 지자체마다 다르다** — 대전 "용도지역 안에서의 건폐율",
+    /// 안양 "용도지역에서의 건폐율". 예전에는 앞의 것만 정확히 찾아서 안양에서는 법정 한도가
+    /// 통째로 비었다("조례에서 찾지 못했습니다"). 그래서 "용도지역"과 "건폐율"이 함께 든 제목을 찾되,
+    /// 같은 말이 들어가는 완화·특례 조문에는 걸리지 않게 뺀다.
+    /// </summary>
+    private const string CoverageWord = "건폐율";
+    private const string FarWord = "용적률";
+    private static readonly string[] ExcludedTitleWords = { "완화", "특례", "강화", "경관지구", "예외" };
 
     public static ZoningLimitLookup Resolve(LawText? ordinance, IEnumerable<string> useZones)
     {
         var zones = useZones.Select(z => z.Trim()).Where(z => z.Length > 0).ToList();
         if (ordinance is null || zones.Count == 0) return new ZoningLimitLookup();
 
-        var coverage = Find(ordinance, CoverageTitle, zones);
-        var far = Find(ordinance, FarTitle, zones);
+        var coverage = Find(ordinance, CoverageWord, zones);
+        var far = Find(ordinance, FarWord, zones);
 
         return new ZoningLimitLookup
         {
             CoverageRatio = coverage?.Value,
-            CoverageBasis = coverage is null ? null : $"{ordinance.Name} 제{coverage.ArticleNo}조",
+            CoverageBasis = Basis(ordinance, coverage),
             FloorAreaRatio = far?.Value,
-            FloorAreaBasis = far is null ? null : $"{ordinance.Name} 제{far.ArticleNo}조",
+            FloorAreaBasis = Basis(ordinance, far),
             MatchedZone = coverage?.Zone ?? far?.Zone,
         };
     }
 
-    private static Hit? Find(LawText ordinance, string title, List<string> zones)
+    /// <summary>"안양시 도시계획 조례 제50조" + 단서가 있으면 다음 줄에 "※ 단서: …".</summary>
+    private static string? Basis(LawText ordinance, Hit? hit) => hit is null ? null
+        : $"{ordinance.Name} 제{hit.ArticleNo}조" + (hit.Proviso is null ? "" : $"\n※ 단서: {hit.Proviso}");
+
+    private static Hit? Find(LawText ordinance, string word, List<string> zones)
     {
-        foreach (var article in ordinance.FindArticlesByTitle(title))
+        foreach (var article in ordinance.FindArticlesByTitle(word).Where(IsZoneArticle))
         {
             var hit = MatchZone(article.Body, zones);
             if (hit is not null) return hit with { ArticleNo = article.Number };
         }
         return null;
     }
+
+    /// <summary>용도지역별 한도를 정하는 본 조문인지 (완화·특례·경관지구 조문 제외).</summary>
+    internal static bool IsZoneArticle(Article article) =>
+        article.Title.Contains("용도지역") && !ExcludedTitleWords.Any(article.Title.Contains);
 
     // "12. 일반공업지역: 70퍼센트 이하" / "8. 일반상업지역: 1,100퍼센트 이하"
     private static readonly Regex ZoneLine = new(
@@ -70,13 +84,35 @@ public static class ZoningLimitResolver
                 if (listed != z) continue;
                 var raw = m.Groups[2].Value.Replace(",", "");
                 if (double.TryParse(raw, NumberStyles.Float, CultureInfo.InvariantCulture, out var v))
-                    return new Hit(v, zone, "");
+                    return new Hit(v, zone, "", ProvisoAfter(body!, m.Index + m.Length));
             }
         }
         return null;
     }
 
-    internal sealed record Hit(double Value, string Zone, string ArticleNo);
+    /// <summary>
+    /// 값 바로 뒤에 붙은 단서를 꺼낸다. 없으면 null.
+    ///
+    /// 안양 조례: "13. 준공업지역: 300퍼센트 이하(「건축법 시행령」 별표 1 제17호의 공장 및 …
+    /// 지식산업센터의 경우에는 350퍼센트 이하로 한다)". 앞의 300만 집으면 **공장 프로젝트의 법정
+    /// 용적률이 틀린 값으로 채워진다.** 용도 판단은 코드가 단정하지 않고(원칙 5) 단서를 그대로 보여준다.
+    /// </summary>
+    internal static string? ProvisoAfter(string body, int from)
+    {
+        // 다음 호("14. …")가 시작되기 전까지가 이 호의 나머지다.
+        var next = NextClause.Match(body, from);
+        var rest = body[from..(next.Success ? next.Index : Math.Min(body.Length, from + 300))].Trim();
+        var open = rest.IndexOf('(');
+        if (open < 0) return null;
+
+        var proviso = rest[(open + 1)..].TrimEnd(')', ' ', '.');
+        // 다른 한도 값이 들어 있어야 단서다 — "(…를 제외한다)" 같은 설명은 값이 바뀌지 않는다.
+        return proviso.Contains("퍼센트") ? proviso : null;
+    }
+
+    private static readonly Regex NextClause = new(@"\d+\.\s*[가-힣「]", RegexOptions.Compiled);
+
+    internal sealed record Hit(double Value, string Zone, string ArticleNo, string? Proviso = null);
 }
 
 /// <summary>도시계획조례에서 찾은 법정 한도. 못 찾으면 각 값이 null이다.</summary>

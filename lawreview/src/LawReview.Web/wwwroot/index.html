@@ -48,7 +48,7 @@
           <tr><th>건 축 주</th><td colspan="3"><div class="cell" data-field="client" contenteditable="true"></div></td></tr>
           <tr>
             <th>대 지 위 치</th>
-            <td colspan="2"><div class="cell" data-field="siteAddress" contenteditable="true"></div></td>
+            <td colspan="2"><div class="cell" data-field="siteAddress" contenteditable="true" spellcheck="false" data-ph="지번 또는 도로명 주소 — 입력 후 Enter"></div></td>
             <td class="act"><button class="btn sm" id="btnLookup">자동조회</button></td>
           </tr>
           <tr><th>지 역 / 지 구</th><td colspan="3"><div class="cell multi" data-field="useZones" contenteditable="true"></div></td></tr>
@@ -214,6 +214,7 @@
 <dialog id="dlgSettings">
   <form method="dialog" class="dlg">
     <h3>설정</h3>
+    <p class="dlg-notice" id="setNotice" hidden></p>
     <label>법제처 Open API 키 (OC) <input type="password" id="setMoleg" placeholder="미입력"></label>
     <p class="hint">open.law.go.kr 무료 발급. 조문 원문 조회에 사용.</p>
     <label>Claude API 키 <input type="password" id="setClaude" placeholder="미입력"></label>

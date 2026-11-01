@@ -14,8 +14,8 @@ public sealed class AppSettings
     public string VworldApiKey { get; set; } = "";     // VWorld 키 (www.vworld.kr, 무료) — 용도지역 자동조회
     public string VworldDomain { get; set; } = "http://localhost";  // VWorld 키 발급 시 등록한 서비스 URL
 
-    private static string Dir =>
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "LawReview");
+    // 경로는 DataLocation이 정한다 — 스토어 앱 가상 폴더에만 남은 설정을 가져오는 일까지 맡는다.
+    private static string Dir => DataLocation.Root;
     private static string FilePath => Path.Combine(Dir, "settings.json");
 
     public static AppSettings Load()

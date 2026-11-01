@@ -12,8 +12,7 @@ public static class ProjectStore
     {
         get
         {
-            var d = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "LawReview", "projects");
+            var d = Path.Combine(LawReview.Core.DataLocation.Root, "projects");
             Directory.CreateDirectory(d);
             return d;
         }

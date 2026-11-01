@@ -141,6 +141,14 @@ function bindHeadFields() {
       if (f === "projectName") stampProject();
     });
     el.addEventListener("blur", recalc);
+
+    // 대지위치는 주소만 넣으면 조회된다 — Enter 또는 다른 칸으로 옮길 때.
+    if (f === "siteAddress") {
+      el.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" && !e.isComposing) { e.preventDefault(); el.blur(); }
+      });
+      el.addEventListener("blur", () => lookupAddress({ auto: true }));
+    }
   });
 }
 
@@ -299,7 +307,10 @@ const fmt = (v) => (v || 0).toLocaleString("ko-KR", { minimumFractionDigits: 2, 
 
 // ── 계산 (엔진 호출) ─────────────────────────────────────────
 let recalcTimer = null;
-function recalc() {
+// quiet: 계산은 하되 상태줄은 건드리지 않는다(자동조회 완료 메시지처럼 남겨야 할 안내가 있을 때).
+let recalcQuiet = false;
+function recalc(opts) {
+  recalcQuiet = !!opts?.quiet;
   clearTimeout(recalcTimer);
   recalcTimer = setTimeout(doRecalc, 150);
 }
@@ -356,7 +367,7 @@ async function doRecalc() {
       if (v?.before != null) setCalc(key, row.plan === "derived" ? "before" : "beforeCalc", v.before);
     }
     warnCompliance(o.compliance);
-    status(o.change
+    if (!recalcQuiet) status(o.change
       ? `계산 갱신됨 — ${o.change.grossArea} / 주차 ${o.change.additionalParking}`
       : `계산 갱신됨 — 연면적 ${fmt(o.grossFloorArea)} ㎡`);
   } catch { /* 입력 중 부분 오류는 무시 */ }
@@ -408,14 +419,44 @@ function setCalc(key, slot, text) {
 const num = (v) => { const n = parseFloat(String(v ?? "").replace(/[^\d.-]/g, "")); return isNaN(n) ? 0 : n; };
 
 // ── 자동조회 ─────────────────────────────────────────────────
-$("#btnLookup").addEventListener("click", async () => {
-  status("주소 조회 중…");
-  const r = await fetch("/api/lookup", {
-    method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ address: state.project.siteAddress, primaryUse: state.project.primaryUse }),
-  });
-  const d = await r.json();
-  if (!d.ok) { status("조회 실패: " + d.message); return; }
+// 주소만 넣으면 조회된다: 대지위치 칸에서 Enter를 치거나 다른 칸으로 옮기면 자동 실행.
+// 버튼은 같은 주소로 다시 조회할 때 쓴다. 같은 주소로는 자동 재조회하지 않는다 —
+// 조회는 지역지구·대지면적·법정 한도를 덮어쓰므로, 사람이 고친 값이 지워지면 안 된다.
+$("#btnLookup").addEventListener("click", () => lookupAddress({ auto: false }));
+
+let lookupBusy = false;
+async function lookupAddress({ auto }) {
+  const address = (state.project.siteAddress || "").trim();
+  if (lookupBusy) return;
+  if (!address) { if (!auto) status("대지위치를 입력하세요 (지번·도로명 모두 가능)"); return; }
+  if (auto && address === state.project.lookedUpAddress) return;
+
+  lookupBusy = true;
+  const btn = $("#btnLookup");
+  btn.disabled = true; btn.textContent = "조회 중…";
+  status(`주소 조회 중… (${address})`);
+  try {
+    const r = await fetch("/api/lookup", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ address, primaryUse: state.project.primaryUse }),
+    });
+    applyLookup(await r.json(), address);
+  } catch (e) {
+    status("조회 실패: 화면 호스트와 연결되지 않았습니다 — " + e.message);
+  } finally {
+    lookupBusy = false;
+    btn.disabled = false; btn.textContent = "자동조회";
+  }
+}
+
+function applyLookup(d, inputAddress) {
+  if (!d.ok) {
+    // 키가 없어서 실패한 것이면 상태줄에만 적지 않는다 — 실제로 이걸 못 보고
+    // "주소 조회가 안 된다"로 여긴 일이 있었다. 설정 창을 바로 연다.
+    if (/키/.test(d.message || "")) openSettings(d.message);
+    status("조회 실패: " + d.message);
+    return;
+  }
   // 도로명을 지번으로 바꿔 조회한 경우 — 검토서는 지번 주소로 나가므로 바뀐 사실을 알린다.
   const addrNote = d.fromRoadAddress ? " / 도로명 주소를 지번 주소로 바꿨습니다" : "";
 
@@ -433,6 +474,8 @@ $("#btnLookup").addEventListener("click", async () => {
   if (L.far != null) { setCell("floorRatio", "legal", String(L.far)); setCell("floorRatio", "basis", L.farBasis || ""); }
   if (L.coverage != null || L.far != null) {
     limitNote = ` / 법정 건폐율 ${L.coverage ?? "-"}% · 용적률 ${L.far ?? "-"}% (${L.zone || ""} 기준)`;
+    // 공장·지식산업센터 등 용도별로 한도가 달라지는 단서가 있으면 함께 알린다(안양 준공업지역 등).
+    if (/※ 단서/.test((L.coverageBasis || "") + (L.farBasis || ""))) limitNote += " — 용도별 단서 있음(법규 칸 확인)";
   } else {
     limitNote = " / 법정 한도는 조례에서 찾지 못했습니다 — 직접 입력하세요";
   }
@@ -456,9 +499,13 @@ $("#btnLookup").addEventListener("click", async () => {
   if (state.landscapeBasis) setCell("landscape", "basis", state.landscapeBasis);
   applyLandscapeRule();
 
+  // 입력한 주소와 바뀐 지번 주소 둘 다 "조회한 주소"로 기록한다 — 칸이 지번으로 바뀐 뒤
+  // 포커스가 빠질 때 같은 땅을 또 조회하지 않게.
+  state.project.lookedUpAddress = d.address;
+  state.lastLookupInput = inputAddress;
   status(`자동조회 완료 — ${d.province} ${d.city} / 지목 ${d.category || "-"} / ${d.zones.length}개 지역·지구${addrNote}${limitNote}${parkNote}`);
-  recalc();
-});
+  recalc({ quiet: true });   // 완료 메시지를 "계산 갱신됨"으로 덮지 않는다
+}
 
 /// 설계개요 표의 특정 칸에 값을 넣는다(사용자 입력 칸도 채워야 하므로 setCalc과 별도).
 function setCell(key, slot, value) {
@@ -924,7 +971,13 @@ $("#projectList").addEventListener("click", async (e) => {
 });
 
 // ── 설정 ─────────────────────────────────────────────────────
-$("#btnSettings").addEventListener("click", async () => {
+$("#btnSettings").addEventListener("click", () => openSettings());
+
+/// 설정 창을 연다. notice가 있으면 왜 열렸는지 창 맨 위에 적는다(키가 없어 조회가 막힌 경우 등).
+async function openSettings(notice) {
+  const box = $("#setNotice");
+  box.textContent = notice || "";
+  box.hidden = !notice;
   const s = await (await fetch("/api/settings")).json();
   $("#setModel").value = s.claudeModel || "claude-sonnet-5";
   $("#setVworldDomain").value = s.vworldDomain || "http://localhost";
@@ -932,7 +985,7 @@ $("#btnSettings").addEventListener("click", async () => {
   $("#setClaude").placeholder = s.hasClaude ? "저장됨 (변경 시 입력)" : "미입력";
   $("#setVworld").placeholder = s.hasVworld ? "저장됨 (변경 시 입력)" : "미입력";
   $("#dlgSettings").showModal();
-});
+}
 
 $("#btnSaveSettings").addEventListener("click", async () => {
   const body = {
@@ -961,8 +1014,18 @@ try {
     restore(JSON.parse(saved));
     status("직전 작업을 복원했습니다. (저장하려면 상단 '저장')");
   } else {
-    status("준비됨 — 대지위치를 입력하고 자동조회를 누르세요");
+    status("준비됨 — 대지위치(지번·도로명)를 입력하고 Enter를 누르면 자동으로 조회합니다");
   }
 } catch {
-  status("준비됨 — 대지위치를 입력하고 자동조회를 누르세요");
+  status("준비됨 — 대지위치(지번·도로명)를 입력하고 Enter를 누르면 자동으로 조회합니다");
 }
+
+// 키가 없으면 조회·검토가 전부 막힌다. 실행하자마자 알려야 한다 — 상태줄 한 줄로는
+// 못 보고 넘어간다(실제로 "주소 조회가 안 된다"로 오인한 일이 있었다).
+(async () => {
+  try {
+    const s = await (await fetch("/api/settings")).json();
+    const missing = [!s.hasVworld && "VWorld(주소 조회)", !s.hasMoleg && "법제처 OC(조문 조회)"].filter(Boolean);
+    if (missing.length) status(`설정 필요 — ${missing.join(", ")} 키가 없습니다. 상단 "설정"에서 입력하세요`);
+  } catch { /* 호스트가 아직 안 떴으면 조용히 넘어간다 */ }
+})();
