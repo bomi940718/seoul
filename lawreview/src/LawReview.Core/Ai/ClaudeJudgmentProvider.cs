@@ -14,7 +14,7 @@ public sealed class ClaudeJudgmentProvider : IJudgmentProvider
     private readonly string _apiKey;
     private readonly string _model;
 
-    public ClaudeJudgmentProvider(HttpClient http, string apiKey, string model = "claude-sonnet-5")
+    public ClaudeJudgmentProvider(HttpClient http, string apiKey, string model = AppSettings.DefaultClaudeModel)
     {
         _http = http;
         _apiKey = apiKey;
@@ -31,7 +31,9 @@ public sealed class ClaudeJudgmentProvider : IJudgmentProvider
             model = _model,
             // 사유가 길어져 응답이 잘리면 판정을 통째로 잃는다(실제로 "건축물의 내화구조"에서 발생).
             // 여유를 두고, 그래도 잘린 경우는 ParsePartial이 판정을 살린다.
-            max_tokens = 2048,
+            // Sonnet 5.5부터는 답하기 전에 거의 매번 생각하고 그 토큰도 이 한도에 들어간다 —
+            // 2048이면 생각만 하다 판정 JSON이 잘릴 수 있어 넉넉히 둔다(쓴 만큼만 과금).
+            max_tokens = 8192,
             system = SystemPrompt,
             messages = new[] { new { role = "user", content = userPrompt } },
         });

@@ -979,7 +979,7 @@ async function openSettings(notice) {
   box.textContent = notice || "";
   box.hidden = !notice;
   const s = await (await fetch("/api/settings")).json();
-  $("#setModel").value = s.claudeModel || "claude-sonnet-5";
+  $("#setModel").value = s.claudeModel || "claude-sonnet-5-5";
   $("#setVworldDomain").value = s.vworldDomain || "http://localhost";
   $("#setMoleg").placeholder = s.hasMoleg ? "저장됨 (변경 시 입력)" : "미입력";
   $("#setClaude").placeholder = s.hasClaude ? "저장됨 (변경 시 입력)" : "미입력";
