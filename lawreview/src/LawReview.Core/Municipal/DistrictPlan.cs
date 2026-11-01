@@ -25,6 +25,16 @@ public interface IDistrictPlanProvider
     /// <summary>이 제공자가 담당하는 광역 지자체명 (예: "서울특별시").</summary>
     string Province { get; }
 
+    /// <summary>출처 이름. 검토 진행 표시와 검토서 인용에 쓴다 (예: "안양시 고시공고").</summary>
+    string Name { get; }
+
+    /// <summary>
+    /// 이 프로젝트를 담당하는 제공자인지.
+    /// 광역이 포털을 운영하는 곳(서울)은 광역명으로, 시·군이 제각각인 곳(경기도)은
+    /// **기초 지자체까지 봐야** 한다 — 안양시 수집기를 경기도 전체에 쓸 수는 없다.
+    /// </summary>
+    bool Matches(string province, string city);
+
     /// <summary>명칭 또는 위치 키워드로 지구단위계획구역을 검색한다 (예: "봉천동").</summary>
     Task<IReadOnlyList<DistrictPlanRecord>> SearchAsync(string keyword, CancellationToken ct = default);
 
@@ -32,17 +42,16 @@ public interface IDistrictPlanProvider
     Task<bool> DownloadNoticePdfAsync(DistrictPlanRecord record, string filePath, CancellationToken ct = default);
 }
 
-/// <summary>등록된 시별 제공자 목록. 프로젝트 광역 지자체명으로 찾는다.</summary>
+/// <summary>
+/// 등록된 지자체별 제공자 목록. 광역+기초 지자체명으로 담당 제공자를 찾는다.
+/// 새 지자체를 붙일 때는 <see cref="IDistrictPlanProvider"/> 구현을 만들어 여기 추가한다.
+/// </summary>
 public static class DistrictPlanProviders
 {
-    public static IDistrictPlanProvider? For(string province, HttpClient http)
+    public static IDistrictPlanProvider? For(string province, string city, HttpClient http)
     {
-        var normalized = province.Replace(" ", "");
-        return normalized switch
-        {
-            "서울특별시" or "서울시" or "서울" => new SeoulUrbanPortalClient(http),
-            _ => null,
-        };
+        IDistrictPlanProvider[] all = { new SeoulUrbanPortalClient(http), new AnyangNoticeClient(http) };
+        return all.FirstOrDefault(p => p.Matches(province ?? "", city ?? ""));
     }
 
     /// <summary>

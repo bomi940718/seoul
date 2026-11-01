@@ -141,6 +141,8 @@ public class DistrictPlanTests
     {
         public string? LastKeyword;
         public string Province => "서울특별시";
+        public string Name => "스텁";
+        public bool Matches(string province, string city) => true;
         public Task<IReadOnlyList<DistrictPlanRecord>> SearchAsync(string keyword, CancellationToken ct = default)
         {
             LastKeyword = keyword;
@@ -167,9 +169,16 @@ public class DistrictPlanTests
     public void 시별_제공자_등록()
     {
         using var http = new HttpClient();
-        Assert.NotNull(DistrictPlanProviders.For("서울특별시", http));
-        Assert.NotNull(DistrictPlanProviders.For("서울시", http));
+        Assert.IsType<SeoulUrbanPortalClient>(DistrictPlanProviders.For("서울특별시", "관악구", http));
+        Assert.IsType<SeoulUrbanPortalClient>(DistrictPlanProviders.For("서울시", "강남구", http));
+
+        // 경기도는 시·군마다 포털이 달라 기초 지자체까지 봐야 한다 —
+        // 안양시 수집기를 경기도 전체에 쓰면 엉뚱한 지자체 고시를 인용하게 된다.
+        Assert.IsType<AnyangNoticeClient>(DistrictPlanProviders.For("경기도", "안양시", http));
+        Assert.IsType<AnyangNoticeClient>(DistrictPlanProviders.For("경기도", "안양시 동안구", http));
+        Assert.Null(DistrictPlanProviders.For("경기도", "성남시 분당구", http));
+
         // 아직 미구현 지자체는 null — 검토 항목은 기존 수동 안내 문구를 유지한다.
-        Assert.Null(DistrictPlanProviders.For("대전광역시", http));
+        Assert.Null(DistrictPlanProviders.For("대전광역시", "유성구", http));
     }
 }

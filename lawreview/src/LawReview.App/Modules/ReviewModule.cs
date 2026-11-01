@@ -384,7 +384,7 @@ public sealed class ReviewModule : IAppModule
             var progress = new Progress<string>(msg => _log.AppendText($"{DateTime.Now:HH:mm:ss}  {msg}\r\n"));
 
             // 지구단위계획 조회 — 구현된 지자체(서울)만 제공자가 붙고, 그 외는 기존 수동 안내 유지.
-            var districtPlan = LawReview.Core.Municipal.DistrictPlanProviders.For(project.Province, Http);
+            var districtPlan = LawReview.Core.Municipal.DistrictPlanProviders.For(project.Province, project.City, Http);
             var engine = new ReviewEngine(moleg, judge, progress, districtPlan);
             var result = await engine.RunAsync(project, checklist);
 

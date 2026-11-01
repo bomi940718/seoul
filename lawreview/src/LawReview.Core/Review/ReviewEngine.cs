@@ -407,23 +407,26 @@ public sealed class ReviewEngine
             return;     // 직접 등록이 있으면 포털 조회는 건너뛴다
         }
         if (_districtPlan is null) return;
-        if (!project.Province.Replace(" ", "").StartsWith(_districtPlan.Province.Replace(" ", "")[..2])) return;
+        if (!_districtPlan.Matches(project.Province, project.City)) return;
         var keyword = DistrictPlanProviders.KeywordFromAddress(project.SiteAddress);
         if (keyword is null) return;
 
         try
         {
-            Report($"지구단위계획 조회 중 ({_districtPlan.Province} \"{keyword}\")...");
+            Report($"지구단위계획 조회 중 ({_districtPlan.Name} \"{keyword}\")...");
             var records = await _districtPlan.SearchAsync(keyword, ct);
             if (records.Count == 0)
             {
                 row.Reason = $"\"{keyword}\" 검색 결과 지구단위계획구역이 조회되지 않았습니다. " +
-                             $"포털에서 필지 기준으로 재확인하세요: {SeoulUrbanPortalClient.PortalPageUrl}";
+                             $"{_districtPlan.Name}에서 필지 기준으로 재확인하세요.";
                 return;
             }
             foreach (var r in records.Take(5))
             {
-                var body = $"{r.NoticeOrgan} {r.NoticeNo} ({r.NoticeDate} 고시) — {r.NoticeTitle}\n위치: {r.Location}" +
+                // 위치·구역면적은 포털마다 있을 수도 없을 수도 있다(안양 고시공고에는 없다).
+                // 빈 칸을 "위치: "처럼 남기면 검토서에 빈 항목이 실린다.
+                var body = $"{r.NoticeOrgan} {r.NoticeNo} ({r.NoticeDate} 고시) — {r.NoticeTitle}" +
+                           (r.Location.Length > 0 ? $"\n위치: {r.Location}" : "") +
                            (r.AreaAfter is double a ? $"\n구역면적: {a:N1} ㎡" : "") +
                            (r.NoticePdfUrl.Length > 0 ? $"\n고시문 원문: {r.NoticePdfUrl}" : "") +
                            $"\n포털 열람: {r.PortalUrl}";

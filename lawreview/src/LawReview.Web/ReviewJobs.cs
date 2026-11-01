@@ -65,7 +65,7 @@ public static class ReviewJobs
                     ? new ClaudeJudgmentProvider(Http, settings.ClaudeApiKey, settings.ClaudeModel)
                     : new OfflineJudgmentProvider();
 
-                var districtPlan = DistrictPlanProviders.For(project.Province, Http);
+                var districtPlan = DistrictPlanProviders.For(project.Province, project.City, Http);
                 var progress = new Progress<string>(m => { lock (job.Progress) job.Progress.Add(m); });
 
                 var engine = new ReviewEngine(moleg, judge, progress, districtPlan);

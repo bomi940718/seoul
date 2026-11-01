@@ -24,6 +24,10 @@ public sealed class SeoulUrbanPortalClient : IDistrictPlanProvider
     public SeoulUrbanPortalClient(HttpClient http) => _http = http;
 
     public string Province => "서울특별시";
+    public string Name => "서울도시공간포털";
+
+    /// <summary>서울은 광역이 포털을 운영하므로 자치구와 무관하게 광역명으로만 가른다.</summary>
+    public bool Matches(string province, string city) => province.Replace(" ", "").StartsWith("서울");
 
     public async Task<IReadOnlyList<DistrictPlanRecord>> SearchAsync(string keyword, CancellationToken ct = default)
     {
