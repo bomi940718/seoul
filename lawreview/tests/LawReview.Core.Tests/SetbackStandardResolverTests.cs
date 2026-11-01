@@ -257,4 +257,27 @@ public class SetbackStandardResolverTests
         var std = SetbackStandardResolver.ResolveChain(new[] { DaejeonOrdinance() }, Decree());
         Assert.Contains(std.MatchedFor("공장"), r => r.HasProviso);
     }
+[Fact]
+    public void 속초_항목명에_딸린_단서_문장을_조건으로_오인하지_않는다()
+    {
+        // 칸이 "…및 종교시설 다만, 상업" / "지역에 건축하는 건축물을 제외한다."로 끊긴다.
+        // 뒷줄을 조건으로 보면 "지역에 건축하는 건축물을 제외한다.: 1.5미터 이상"이 된다.
+        var rules = SetbackStandardResolver.ParseOrdinanceAnnex(Fixture("sokcho_setback_annex.txt"));
+        var 판매 = rules.First(r => r.Side == SetbackSide.인접대지경계선 && r.Target.Contains("판매시설"));
+
+        Assert.DoesNotContain(판매.Distances, d => d.Contains("제외한다"));
+        Assert.Contains(판매.Distances, d => d.Contains("1.5미터 이상"));
+        Assert.Contains("제외한다", 판매.Target);   // 단서는 항목명 쪽에 남는다
+    }
+
+    [Fact]
+    public void 대전_서술형_조건_칸은_그대로_조건으로_둔다()
+    {
+        // "(1) …3면 이상을 접하는 경우"는 문장처럼 보이지만 거리와 짝지어지는 조건이다.
+        var rules = SetbackStandardResolver.ParseOrdinanceAnnex(OrdinanceLines());
+        var 상가 = rules.First(r => r.Side == SetbackSide.건축선 && r.Target.Contains("전통시장"));
+
+        Assert.Contains(상가.Distances, d => d.Contains("3면 이상을 접하는 경우") && d.Contains("1.5미터 이상"));
+        Assert.Contains(상가.Distances, d => d.Contains("2면 이하") && d.Contains("2미터 이상"));
+    }
 }

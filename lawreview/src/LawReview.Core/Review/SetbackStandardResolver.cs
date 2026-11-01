@@ -185,9 +185,9 @@ public static class SetbackStandardResolver
             // 거리 칸이 이미 나왔다면 여기서부터는 다음 조건 묶음이다.
             if (distances.Count > 0) Flush();
             // 항목명이 칸 안에서 줄바꿈된 경우만 항목명에 이어 붙인다("마. 그 밖의" + "건축물",
-            // "…합계가 500제곱미터" + "이상인 공장(…)"). 문장이 미완인 때만이며,
+            // "…합계가 500제곱미터" + "이상인 공장(…)"). 문장이 미완이거나 단서 문장이 이어질 때이며,
             // "라. 공동주택" 다음의 "아파트"는 항목명이 아니라 조건 칸이다.
-            if (current.Distances.Count == 0 && LooksIncomplete(current.Rule.Target))
+            if (current.Distances.Count == 0 && (LooksIncomplete(current.Rule.Target) || IsProvisoFragment(line)))
                 current.Append(line);
             else
                 qualifiers.Add(line.TrimEnd(':', ' '));
@@ -201,6 +201,18 @@ public static class SetbackStandardResolver
     /// (성남시 조례는 "…합계가 500제곱미터"에서 칸이 끊기고 "이상인 공장(…)"이 다음 줄에 온다.
     ///  여기서 끊어 버리면 항목명에 "공장"이 없어 용도 매칭이 통째로 어긋난다)
     /// </summary>
+    /// <summary>
+    /// 조건 칸이 아니라 **항목명에 딸린 단서 문장**인지.
+    ///
+    /// 속초 조례는 "…및 종교시설 다만, 상업" / "지역에 건축하는 건축물을 제외한다."로 칸이 끊긴다.
+    /// 뒷줄을 조건으로 보면 "지역에 건축하는 건축물을 제외한다.: 1.5미터 이상"처럼 엉뚱한 묶음이 된다.
+    /// 조건 칸은 "준공업지역"·"모든 지역"·"1,000제곱미터 이상" 같은 짧은 이름표지 문장이 아니다.
+    /// 다만 "…접하는 경우"처럼 조건 칸 자체가 서술형인 조례(대전 바목)가 있어 범위를 좁게 잡는다.
+    /// </summary>
+    private static bool IsProvisoFragment(string line) =>
+        line.Contains("제외한다") || line.Contains("포함한다")
+        || line.StartsWith("다만") || line.EndsWith("한다.");
+
     private static bool LooksIncomplete(string target)
     {
         if (target.Length == 0) return true;
