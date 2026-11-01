@@ -59,14 +59,14 @@ public static class ApiEndpoints
             if (s.VworldApiKey.Length == 0)
                 return Results.Ok(new { ok = false, message = "설정에서 VWorld 키를 먼저 입력하세요." });
             if (string.IsNullOrWhiteSpace(dto.Address))
-                return Results.Ok(new { ok = false, message = "대지위치(지번 주소)를 입력하세요." });
+                return Results.Ok(new { ok = false, message = "대지위치를 입력하세요(지번·도로명 모두 가능)." });
 
             try
             {
                 var vworld = new VworldClient(Http, s.VworldApiKey, s.VworldDomain);
                 var index = await vworld.GetLandUseIndexAsync(dto.Address.Trim());
                 if (index is null)
-                    return Results.Ok(new { ok = false, message = "조회 결과가 없습니다. 지번 주소인지 확인하세요." });
+                    return Results.Ok(new { ok = false, message = "조회 결과가 없습니다. 주소 표기를 확인하세요(지번·도로명 모두 조회합니다)." });
 
                 // 용도지역이 정해지면 법정 건폐율·용적률도 지자체 도시계획조례에서 바로 가져온다.
                 // (지구단위계획이 없어도 검토가 되어야 하므로 — 조례가 기본 기준)
@@ -77,6 +77,8 @@ public static class ApiEndpoints
                     ok = true,
                     pnu = index.Pnu,
                     address = index.RefinedAddress,
+                    // 도로명으로 입력했으면 지번으로 바꿔 조회한 것이다 — 화면이 그 사실을 알린다.
+                    fromRoadAddress = index.FromRoadAddress,
                     province = index.Province,
                     city = index.City,
                     zones = index.Zones,

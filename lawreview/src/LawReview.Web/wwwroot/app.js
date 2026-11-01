@@ -416,6 +416,8 @@ $("#btnLookup").addEventListener("click", async () => {
   });
   const d = await r.json();
   if (!d.ok) { status("조회 실패: " + d.message); return; }
+  // 도로명을 지번으로 바꿔 조회한 경우 — 검토서는 지번 주소로 나가므로 바뀐 사실을 알린다.
+  const addrNote = d.fromRoadAddress ? " / 도로명 주소를 지번 주소로 바꿨습니다" : "";
 
   state.project.province = d.province; state.project.city = d.city;
   setField("useZones", (d.zones || []).join(", "));
@@ -454,7 +456,7 @@ $("#btnLookup").addEventListener("click", async () => {
   if (state.landscapeBasis) setCell("landscape", "basis", state.landscapeBasis);
   applyLandscapeRule();
 
-  status(`자동조회 완료 — ${d.province} ${d.city} / 지목 ${d.category || "-"} / ${d.zones.length}개 지역·지구${limitNote}${parkNote}`);
+  status(`자동조회 완료 — ${d.province} ${d.city} / 지목 ${d.category || "-"} / ${d.zones.length}개 지역·지구${addrNote}${limitNote}${parkNote}`);
   recalc();
 });
 

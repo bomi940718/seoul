@@ -28,14 +28,81 @@ public sealed class VworldClient
         _domain = domain;
     }
 
-    /// <summary>지번 주소 → PNU. 도로명 주소는 인식되지 않을 수 있다.</summary>
+    /// <summary>
+    /// 주소 → PNU. 지번 주소가 기본이고, **도로명 주소는 좌표를 거쳐 지번으로 바꾼 뒤** 조회한다.
+    ///
+    /// 도로명으로 조회하면(type=ROAD) 좌표는 나오지만 PNU 자리(level4LC)가 비어 온다 —
+    /// 도로명은 필지가 아니라 도로 구간에 붙는 이름이기 때문이다. 그래서 세 걸음을 거친다:
+    /// 도로명 → 좌표 → (그 자리의) 지번 주소 → PNU.
+    /// 검토서에 적히는 대지위치도 이때 얻은 **지번 주소**다(실무 서식이 지번 기준이다).
+    /// </summary>
     public async Task<PnuResult?> AddressToPnuAsync(string address, CancellationToken ct = default)
     {
-        var uri = new Uri("https://api.vworld.kr/req/address?service=address&request=getCoord&type=PARCEL" +
-                          $"&key={Uri.EscapeDataString(_key)}&address={Uri.EscapeDataString(address)}");
-        using var doc = JsonDocument.Parse(await GetStringAsync(uri, ct));
-        return ParsePnu(doc.RootElement);
+        using (var parcel = await GetCoordAsync(address, "PARCEL", ct))
+            if (ParsePnu(parcel.RootElement) is PnuResult hit) return hit;
+
+        // 지번으로 못 찾았으면 도로명으로 본다.
+        if (await RoadAddressPointAsync(address, ct) is not (double x, double y)) return null;
+        if (await ReverseGeocodeAsync(x, y, ct) is not string jibun) return null;
+
+        using var again = await GetCoordAsync(jibun, "PARCEL", ct);
+        return ParsePnu(again.RootElement) is PnuResult found
+            ? found with { FromRoadAddress = true }
+            : null;
     }
+
+    private async Task<JsonDocument> GetCoordAsync(string address, string type, CancellationToken ct)
+    {
+        var uri = new Uri($"https://api.vworld.kr/req/address?service=address&request=getCoord&type={type}" +
+                          $"&key={Uri.EscapeDataString(_key)}&address={Uri.EscapeDataString(address)}");
+        return JsonDocument.Parse(await GetStringAsync(uri, ct));
+    }
+
+    /// <summary>도로명 주소의 좌표(경위도). 도로명으로도 못 찾으면 null.</summary>
+    private async Task<(double X, double Y)?> RoadAddressPointAsync(string address, CancellationToken ct)
+    {
+        using var doc = await GetCoordAsync(address, "ROAD", ct);
+        return ParsePoint(doc.RootElement);
+    }
+
+    internal static (double X, double Y)? ParsePoint(JsonElement root)
+    {
+        if (!root.TryGetProperty("response", out var resp)) return null;
+        if (GetString(resp, "status") != "OK") return null;
+        if (!resp.TryGetProperty("result", out var result)) return null;
+        if (!result.TryGetProperty("point", out var point)) return null;
+
+        // 좌표는 문자열("126.9505607")로 온다.
+        if (!TryDouble(GetString(point, "x"), out var x) || !TryDouble(GetString(point, "y"), out var y))
+            return null;
+        return (x, y);
+    }
+
+    /// <summary>좌표 → 그 자리의 지번 주소. 없으면 null.</summary>
+    public async Task<string?> ReverseGeocodeAsync(double x, double y, CancellationToken ct = default)
+    {
+        var uri = new Uri("https://api.vworld.kr/req/address?service=address&request=getAddress&type=PARCEL" +
+                          $"&key={Uri.EscapeDataString(_key)}&crs=EPSG:4326" +
+                          $"&point={x.ToString(System.Globalization.CultureInfo.InvariantCulture)}," +
+                          $"{y.ToString(System.Globalization.CultureInfo.InvariantCulture)}");
+        using var doc = JsonDocument.Parse(await GetStringAsync(uri, ct));
+        return ParseReverseGeocode(doc.RootElement);
+    }
+
+    internal static string? ParseReverseGeocode(JsonElement root)
+    {
+        if (!root.TryGetProperty("response", out var resp)) return null;
+        if (GetString(resp, "status") != "OK") return null;
+        if (!resp.TryGetProperty("result", out var result)) return null;
+
+        var item = result.ValueKind == JsonValueKind.Array ? result.EnumerateArray().FirstOrDefault() : result;
+        if (item.ValueKind != JsonValueKind.Object) return null;
+        return GetString(item, "text") is { Length: > 0 } text ? text : null;
+    }
+
+    private static bool TryDouble(string? s, out double v) =>
+        double.TryParse(s, System.Globalization.NumberStyles.Float,
+            System.Globalization.CultureInfo.InvariantCulture, out v);
 
     internal static PnuResult? ParsePnu(JsonElement root)
     {
@@ -128,7 +195,7 @@ public sealed class VworldClient
             register?.LegalDongName is { Length: > 0 } dong ? dong : pnu.RefinedAddress);
 
         return new LandUseIndex(pnu.Pnu, pnu.RefinedAddress, zones,
-            register?.Area, register?.Category ?? "", province, city);
+            register?.Area, register?.Category ?? "", province, city, pnu.FromRoadAddress);
     }
 
     /// <summary>
@@ -169,7 +236,11 @@ public sealed class VworldClient
             ? v.GetString() : null;
 }
 
-public sealed record PnuResult(string Pnu, string RefinedAddress);
+/// <summary>필지고유번호와 정제된 **지번** 주소. FromRoadAddress면 도로명을 지번으로 바꾼 결과다.</summary>
+public sealed record PnuResult(string Pnu, string RefinedAddress)
+{
+    public bool FromRoadAddress { get; init; }
+}
 
 /// <summary>토지대장 정보 (그 땅에 딸린 사실).</summary>
 public sealed record LandRegister(double? Area, string Category, string LegalDongName);
@@ -185,4 +256,6 @@ public sealed record LandUseIndex(
     double? Area = null,
     string Category = "",
     string Province = "",
-    string City = "");
+    string City = "",
+    /// <summary>입력이 도로명 주소여서 지번 주소로 바꿔 조회했는지. 화면이 그 사실을 알린다.</summary>
+    bool FromRoadAddress = false);

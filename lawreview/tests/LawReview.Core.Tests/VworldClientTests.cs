@@ -76,4 +76,50 @@ public class VworldClientTests
         Assert.Empty(VworldClient.ParseZones(empty.RootElement));
         Assert.Null(VworldClient.ParseLandRegister(empty.RootElement));
     }
+// ── 도로명 주소 ────────────────────────────────────────────────
+    //
+    // 도로명은 필지가 아니라 도로 구간에 붙는 이름이라 PNU 자리(level4LC)가 **빈 문자열**로 온다.
+    // 그래서 도로명 → 좌표 → (그 자리의) 지번 주소 → PNU 세 걸음을 거친다.
+    // 이 전제가 깨지면 도로명 주소를 넣은 사용자는 아무것도 조회하지 못한다.
+
+    [Fact]
+    public void 도로명_응답에는_PNU가_없다()
+    {
+        using var doc = Fixture("vworld_addr_road.json");
+        Assert.Null(VworldClient.ParsePnu(doc.RootElement));
+    }
+
+    [Fact]
+    public void 도로명_응답에서_좌표를_읽는다()
+    {
+        using var doc = Fixture("vworld_addr_road.json");
+        var point = VworldClient.ParsePoint(doc.RootElement);
+
+        Assert.NotNull(point);
+        Assert.Equal(126.95884848283765, point!.Value.X, 8);
+        Assert.Equal(37.46455896717501, point.Value.Y, 8);
+    }
+
+    [Fact]
+    public void 좌표로_그_자리의_지번_주소를_얻는다()
+    {
+        using var doc = Fixture("vworld_addr_reverse.json");
+        Assert.Equal("서울특별시 관악구 신림동 산 56-1", VworldClient.ParseReverseGeocode(doc.RootElement));
+    }
+
+    [Fact]
+    public void 지번으로_못_찾으면_좌표도_없다()
+    {
+        // 도로명 주소를 PARCEL로 조회한 실응답(NOT_FOUND) — 여기서 도로명 경로로 넘어간다.
+        using var doc = Fixture("vworld_addr_notfound.json");
+        Assert.Null(VworldClient.ParsePnu(doc.RootElement));
+        Assert.Null(VworldClient.ParsePoint(doc.RootElement));
+    }
+
+    [Fact]
+    public void 역지오코딩_결과가_비면_null이다()
+    {
+        using var empty = JsonDocument.Parse("""{"response":{"status":"NOT_FOUND"}}""");
+        Assert.Null(VworldClient.ParseReverseGeocode(empty.RootElement));
+    }
 }
