@@ -83,6 +83,9 @@ public sealed class ReviewEngine
                     row.Citations.Add(await GetAnnexCitationAsync(lawText, lawName, annexName, project, ct));
             }
 
+            // 1-a) 법령해석례는 판정 근거가 아니라 참고 자료다 — 조문 수집이 끝난 뒤 뒤에 붙인다.
+            await AddInterpretationsAsync(row, ct);
+
             // 1-b) 값이 조례에 있는 항목은 법 위계대로 내려가 실제 기준을 붙인다.
             //      (조문만 인용하면 "…기준은 별표 3과 같다"처럼 숫자가 없는 인용이 된다)
             switch (item.Id)
@@ -100,7 +103,10 @@ public sealed class ReviewEngine
                     break;
 
                 case JudgmentType.Ai:
-                    var valid = row.Citations.Where(c => c.Title != "(조회 실패)" && c.Title != "(조문 없음)").ToList();
+                    // 판정 근거는 **조문 원문만**이다(원칙 1). 참고 자료(법령해석례)는 사람이
+                    // 더 확인할 거리로 검토서에만 싣고 AI에게는 넘기지 않는다.
+                    var valid = row.Citations.Where(c => c.Title != "(조회 실패)" && c.Title != "(조문 없음)"
+                                                         && c.LawName != ReferenceLawName).ToList();
                     if (valid.Count == 0)
                     {
                         row.Applicability = Applicability.확인필요;
@@ -246,6 +252,63 @@ public sealed class ReviewEngine
         }
         _lawCache[lawName] = text;
         return text;
+    }
+
+    /// <summary>검토서에서 참고 자료를 조문 인용과 구분하는 이름.</summary>
+    internal const string ReferenceLawName = "법령해석례 (참고)";
+
+    /// <summary>
+    /// 항목에 관한 **법제처 법령해석례**를 참고로 붙인다.
+    ///
+    /// 해석례는 조문이 아니므로 판정 근거로 쓰지 않는다(원칙 1 — 인용은 현행 조문 원문만).
+    /// 대신 "이런 유권해석이 있다"를 알려 사람이 더 확인하게 한다.
+    ///
+    /// **안건명에 항목명이 그대로 들어간 것만** 가져온다. 해석례는 수천 건이라 느슨하게 고르면
+    /// 상관없는 사안이 검토서에 실린다 — 안 붙는 편이 엉뚱한 것이 붙는 것보다 낫다.
+    /// </summary>
+    private async Task AddInterpretationsAsync(ReviewRow row, CancellationToken ct)
+    {
+        var query = SearchableTitle(row.Item.Title);
+        if (query.Length < 4) return;   // "조경"처럼 짧은 말은 걸러지지 않는다
+
+        try
+        {
+            // 같은 해석례가 여러 건으로 돌아오는 일이 있다(안건번호만 다른 중복) — 안건명으로 추린다.
+            var hits = (await _law.SearchInterpretationsAsync(query, ct))
+                .Where(i => i.Title.Contains(query, StringComparison.Ordinal))
+                .GroupBy(i => i.Title).Select(g => g.First())
+                .Take(3).ToList();
+            if (hits.Count == 0) return;
+
+            var body = string.Join("\n", hits.Select(i =>
+                $"· {i.Title}\n  {i.Organ} {i.CaseNo} ({i.ReplyDate})" +
+                (i.Link.Length > 0 ? $"\n  {i.Link}" : "")));
+
+            row.Citations.Add(new CitedArticle(ReferenceLawName, "-", $"{row.Item.Title} 관련 해석례 {hits.Count}건",
+                $"{body}\n\n※ 법제처 유권해석입니다. 조문이 아니므로 판정 근거로 쓰지 않았습니다.", ""));
+        }
+        catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException
+                                   && !ct.IsCancellationRequested)
+        {
+            // 참고 자료가 없다고 검토를 멈출 이유는 없다.
+        }
+    }
+
+    /// <summary>
+    /// 항목명을 해석례 검색어로 다듬는다.
+    /// "건축물의 높이 (일조 등의 확보)" → "일조 등의 확보" (괄호 안이 더 구체적이다)
+    /// </summary>
+    internal static string SearchableTitle(string title)
+    {
+        var open = title.IndexOf('(');
+        var close = title.IndexOf(')', open + 1);
+        if (open > 0 && close > open)
+        {
+            var inner = title[(open + 1)..close].Trim();
+            if (inner.Length >= 4) return inner;
+            return title[..open].Trim();
+        }
+        return title.Trim();
     }
 
     /// <summary>

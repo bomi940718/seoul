@@ -234,6 +234,45 @@ public sealed class MolegClient
     }
 
     /// <summary>
+    /// 법령해석례 검색 (target=expc). 법제처가 회신한 유권해석으로, **조문이 아니라 참고 자료다.**
+    ///
+    /// 검토서에 인용되는 조문은 현행 법령 원문만이라는 원칙(2절 1번)이 있으므로,
+    /// 해석례는 판정 근거가 아니라 "사람이 더 확인할 거리"로만 쓴다.
+    /// 검색 결과에는 안건명·회신기관·회신일자만 오고 질의요지·회답 본문은 상세 조회가 따로 필요하다.
+    /// </summary>
+    public async Task<IReadOnlyList<Interpretation>> SearchInterpretationsAsync(
+        string query, CancellationToken ct = default)
+    {
+        var uri = new Uri($"{BaseUrl}/lawSearch.do?OC={Uri.EscapeDataString(_oc)}&target=expc" +
+                          $"&type=JSON&display=20&query={Uri.EscapeDataString(query)}");
+        using var doc = await GetJsonAsync(uri, ct);
+        return ParseInterpretations(doc.RootElement);
+    }
+
+    internal static IReadOnlyList<Interpretation> ParseInterpretations(JsonElement root)
+    {
+        var results = new List<Interpretation>();
+        foreach (var container in root.EnumerateObject())
+        {
+            if (!container.Value.TryGetProperty("expc", out var items)) continue;
+            foreach (var item in EnumerateArrayOrSingle(items))
+            {
+                var name = GetString(item, "안건명") ?? "";
+                if (name.Length == 0) continue;
+                results.Add(new Interpretation(
+                    Title: name,
+                    Organ: GetString(item, "회신기관명") ?? "",
+                    ReplyDate: GetString(item, "회신일자") ?? "",
+                    CaseNo: GetString(item, "안건번호") ?? "",
+                    // 응답의 상세링크에는 **우리 OC 키가 박혀 있다.** 검토서는 협력사로 나가므로
+                    // 키가 들어간 주소를 실으면 안 된다 → 일련번호로 공개 열람 주소를 만든다.
+                    Link: PublicInterpretationLink(GetString(item, "법령해석례일련번호"))));
+            }
+        }
+        return results;
+    }
+
+    /// <summary>
     /// 자치법규 별표 검색 (target=ordinbyl, search=2 = 자치법규명으로 검색).
     ///
     /// **본문 조회(LawText.Annexes)에 별표가 하나도 없는 조례가 있다**(서울특별시 건축 조례가 그렇다).
@@ -301,6 +340,10 @@ public sealed class MolegClient
 
     private static string AbsoluteLink(string link) =>
         link.StartsWith('/') ? "https://www.law.go.kr" + link : link;
+
+    /// <summary>법령해석례 공개 열람 주소. 일련번호가 없으면 빈 문자열.</summary>
+    internal static string PublicInterpretationLink(string? serialNo) =>
+        string.IsNullOrWhiteSpace(serialNo) ? "" : $"https://www.law.go.kr/expcInfoP.do?expcSeq={serialNo}";
 
     internal static string StripTags(string s) =>
         System.Text.RegularExpressions.Regex.Replace(s, "<[^>]*>", "");
@@ -426,5 +469,10 @@ public sealed record Annex(string Number, string Title, string Kind, string Link
 
 /// <summary>별표·서식 검색 결과 (보조 경로 — 본문의 Annexes를 우선 사용).</summary>
 public sealed record AnnexSummary(string LawName, string Name, string Number, string Kind, string Link);
+
+/// <summary>
+/// 법령해석례 한 건. **조문이 아니라 참고 자료다** — 검토서의 인용 조문과 섞지 않는다(원칙 1).
+/// </summary>
+public sealed record Interpretation(string Title, string Organ, string ReplyDate, string CaseNo, string Link);
 
 public sealed record Article(string Number, string Title, string Body);
