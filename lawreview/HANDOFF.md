@@ -117,7 +117,7 @@ Claude 판정만 미검증(키 없음 — 러너가 "확인필요"로 대체).
   서울 봉천동 857-1 → 9건·484.50㎡·서울특별시/관악구, 성남 정자동 178-1 → 10건·6,600㎡·경기도/**성남시 분당구**.
   앱 화면에서도 주소만 입력→자동조회로 4개 칸이 채워지는 것 확인. 응답 구조는 cadastral-mcp와 동일
 
-### 테스트 — 현재 220건 전부 통과
+### 테스트 — 현재 229건 전부 통과
 
 검증 기준이 **실제 실무 검토서(둔곡)의 수치**: 연면적 2,484.43㎡(PIT 제외), 건폐율 24.10%, 법정 건축면적 4,221.07㎡, 주차 12.42→12대, 장애인 0.36→1대.
 파싱 테스트는 실 API 캡처 픽스처(`tests/LawReview.Core.Tests/Fixtures/`) 기반.
@@ -160,6 +160,16 @@ seoul/  (bomi940718/seoul, 브랜치 claude/korean-law-review-automation-fkmgrh)
   소스는 계속 고쳐졌는데 정작 쓰는 exe는 옛것이었다.
   → 이제 `build-exe.bat`이 게시 후 **`C:\Tools\lawreview-dist\`로 자동 복사**한다.
   **화면(wwwroot)을 고쳤으면 반드시 다시 빌드해야 한다** — exe에 내장되기 때문이다.
+- **함정 2 — 설정이 두 군데에 있다 (2026-11-01).** Claude Desktop은 스토어(MSIX) 앱이라,
+  Claude 세션에서 띄운 프로세스(`dotnet run`, 개발 호스트, 그 셸에서 실행한 exe)가 %APPDATA%에
+  쓰면 Windows가 **`%LOCALAPPDATA%\Packages\Claude_pzs8sxrjxfjjc\LocalCache\Roaming\LawReview`**
+  로 돌려 놓는다. 사용자가 **탐색기에서 더블클릭한 exe는 실제 `%APPDATA%\LawReview`를 본다.**
+  예전 세션들에서 키를 Claude 쪽에서만 넣어서, 사용자의 exe는 키 없이 떠 "주소 조회가 안 된다"로
+  보였다(실제 메시지 "VWorld 키를 먼저 입력하세요"는 상태줄에만 떴다).
+  → `DataLocation`이 실제 폴더에 settings.json이 없으면 가상 폴더 사본을 한 번 가져온다.
+  **Claude 셸에서는 실제 %APPDATA%에 직접 쓸 수 없다**(쓰면 또 가상 폴더로 간다). 사용자 앱이
+  보는 상태를 확인하려면 실행 중인 exe의 포트로 `/api/settings`를 호출해 볼 것
+  (`Get-NetTCPConnection -OwningProcess <PID> -State Listen`).
 
 ```
 cd C:\Tools\seoul\lawreview
@@ -501,7 +511,7 @@ WinForms 시절부터 "본 개발이 끝나면 논의 후"로 미뤄 둔 건이�
 [현재 구조]
 C# 엔진(LawReview.Core) + 로컬 웹호스트(LawReview.Web, HTML 화면) +
 WebView2 셸(LawReview.App). 인터넷 없이 동작하고 배포는 exe 하나.
-테스트 220건이 엔진을 지킨다. 실행: dotnet run --project lawreview/src/LawReview.App
+테스트 229건이 엔진을 지킨다. 실행: dotnet run --project lawreview/src/LawReview.App
 화면(HTML)만 고칠 때는: dotnet run --project lawreview/src/LawReview.Cli -- --web 5099
 
 [폴더 역할 — 헷갈리지 말 것]
