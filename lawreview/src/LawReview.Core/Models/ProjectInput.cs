@@ -27,6 +27,8 @@ public sealed class ProjectInput
 
     public string ProjectName { get; set; } = "";      // 사업명
     public string Client { get; set; } = "";           // 건축주
+    /// <summary>건축주가 국가·지방자치단체·공공기관인지. 녹색건축·BEMS·신재생·BF 등 공공 의무 판정에 쓴다.</summary>
+    public bool IsPublic { get; set; }
     public string SiteAddress { get; set; } = "";      // 대지위치 (지번 주소)
     public string Province { get; set; } = "";         // 광역 지자체 (예: 대전광역시)
     public string City { get; set; } = "";             // 기초 지자체 (예: 유성구)
@@ -40,7 +42,10 @@ public sealed class ProjectInput
     public double PlannedBuildingArea { get; set; }    // 계획 건축면적 (㎡)
     public int PlannedFloorsAbove { get; set; }        // 지상 층수
     public int PlannedFloorsBelow { get; set; }        // 지하 층수
-    public string? PlannedHeight { get; set; }         // 최고 높이 (예: "10 ~ 15 m")
+    public string? PlannedHeight { get; set; }         // 최고 높이 (예: "10 ~ 15 m") — 신축이 아니면 변경후
+    public string? ExistingHeight { get; set; }        // 기존(변경전) 최고 높이 — 건축물대장 값
+    public string? ExistingScale { get; set; }         // 기존(변경전) 건축규모 (예: "지하 1층, 지상 4층")
+    public string? PlannedScale { get; set; }          // 건축규모 — 신축이 아니면 변경후
 
     public List<BuildingArea> Buildings { get; set; } = new();
 

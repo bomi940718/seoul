@@ -156,7 +156,11 @@ function refreshDeltas(o) {
   }
   const h = state.values.height || {};
   setCalc("height", "deltaCalc", num(h.before) && num(h.after) ? sgn(num(h.after) - num(h.before), "m") : "");
-  setCalc("parkingAll", "deltaCalc", o?.change?.additionalParking || "");
+  const add = o?.change?.additionalParkingSpaces;
+  setCalc("parkingAll", "deltaCalc", add == null ? "" : add > 0 ? `추가 ${add} 대` : "추가 없음");
+  const pa = document.querySelector('.cell[data-key="parkingAll"][data-slot="deltaCalc"]');
+  if (pa) pa.title = (o?.change?.additionalParking || "") +
+    " — 변경후 법정 대수 − 변경전 법정 대수 (주차장법 시행령 제6조제4항, 증가분만 추가 확보)";
 }
 
 /// 엔진이 채우는 표시 전용 영역 (사람이 못 고치므로 입력을 덮어쓸 일이 없다)
@@ -184,6 +188,10 @@ function makeCell(key, slot, value, extra, ph) {
 
 // ── 상단 입력 바인딩 ─────────────────────────────────────────
 function bindHeadFields() {
+  // 건축주 구분(공공/민간) — 기본은 민간
+  const pub = $("#chkPublic");
+  pub.checked = !!state.project.isPublic;
+  pub.onchange = () => { state.project.isPublic = pub.checked; autosave(); };
   $$(".head .cell[data-field]").forEach((el) => {
     const f = el.dataset.field;
     el.textContent = state.project[f] || "";
@@ -427,6 +435,7 @@ async function doRecalc() {
   const payload = {
     projectName: state.project.projectName,
     client: state.project.client,
+    isPublic: !!state.project.isPublic,
     siteAddress: state.project.siteAddress,
     province: state.project.province,
     city: state.project.city,
@@ -1125,6 +1134,7 @@ function buildProjectPayload() {
   return {
     projectName: state.project.projectName,
     client: state.project.client,
+    isPublic: !!state.project.isPublic,
     siteAddress: state.project.siteAddress,
     province: state.project.province,
     city: state.project.city,
@@ -1137,6 +1147,11 @@ function buildProjectPayload() {
     plannedBuildingArea: buildingAreaInput(),
     existingBuildingArea: num(state.values.buildingArea?.before),
     plannedFloorsAbove: floorsAbove(state.values.scale?.[planSlot()]),
+    // 높이·규모의 변경전·변경후 — AI가 "높이가 바뀌는지 알 수 없다"로 확인필요를 내지 않도록 넘긴다.
+    plannedHeight: String(state.values.height?.[planSlot()] || "").trim() || null,
+    plannedScale: String(state.values.scale?.[planSlot()] || "").trim() || null,
+    existingHeight: String(state.values.height?.before || "").trim() || null,
+    existingScale: String(state.values.scale?.before || "").trim() || null,
     zoning: {
       maxCoverageRatio: num(state.values.coverage?.legal) || null,
       maxFloorAreaRatio: num(state.values.floorRatio?.legal) || null,

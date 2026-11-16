@@ -69,8 +69,12 @@ public sealed class ReviewEngine
                 }
                 else if (basis.ArticleTitleKeyword is string keyword)
                 {
-                    // 조례는 지자체마다 조문번호가 다르므로 제목 키워드로 찾는다.
-                    var matches = lawText.FindArticlesByTitle(keyword);
+                    // 조례는 지자체마다 조문번호가 다르므로 제목 키워드로 찾는다. 제목에 없으면 본문 키워드로.
+                    var matches = keyword.Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                        .SelectMany(k => lawText.FindArticlesByTitle(k))
+                        .DistinctBy(a => a.Number).ToList();
+                    if (matches.Count == 0 && basis.ArticleBodyKeyword is string bodyKey)
+                        matches = lawText.Articles.Where(a => a.Body.Contains(bodyKey)).Take(3).ToList();
                     if (matches.Count > 0)
                         foreach (var art in matches)
                             row.Citations.Add(new CitedArticle(lawText.Name, art.Number, art.Title, art.Body, lawText.EffectiveDate));
@@ -100,6 +104,13 @@ public sealed class ReviewEngine
             {
                 case JudgmentType.Quantitative:
                     ApplyQuantitative(row, item.Id, result.Overview, project);
+                    break;
+
+                case JudgmentType.Ai when item.Screen is { } screen && ScreenOut(screen, project) is { } excluded:
+                    // 대상 요건(행위·규모·주체)에 명백히 못 미치면 AI 없이 해당없음으로 확정한다.
+                    row.Applicability = Applicability.해당없음;
+                    row.Reason = excluded.Reason;
+                    row.CalculationText ??= excluded.Calculation;
                     break;
 
                 case JudgmentType.Ai:
@@ -134,7 +145,18 @@ public sealed class ReviewEngine
                     row.Applicability = Applicability.확인필요;
                     row.Reason = item.Note ?? "자동 판정 대상이 아닙니다. 원문·도면을 직접 확인하세요.";
                     if (item.Id == "district_unit_plan")
-                        await EnrichDistrictPlanAsync(row, project, ct);
+                    {
+                        // 토지이용계획(지역·지구)에 지구단위계획구역이 없으면 해당 없음이다 — 같은 동의 다른
+                        // 구역 고시를 끌어오면 안 된다(2026-11-16 동교동 153-8에 157-1번지 구역이 붙었던 일).
+                        if (project.DistrictPlanFiles.Count == 0 && project.UseZones.Count > 0
+                            && !project.UseZones.Any(z => z.Replace(" ", "").Contains("지구단위계획구역")))
+                        {
+                            row.Applicability = Applicability.해당없음;
+                            row.Reason = "토지이용계획확인원의 지역·지구에 지구단위계획구역이 없습니다 — 해당 없음. " +
+                                         $"(지역·지구: {string.Join(", ", project.UseZones)})";
+                        }
+                        else await EnrichDistrictPlanAsync(row, project, ct);
+                    }
                     break;
             }
 
@@ -143,6 +165,29 @@ public sealed class ReviewEngine
 
         Report("검토 완료.");
         return result;
+    }
+
+    /// <summary>
+    /// 대상 요건 거르기. 요건에 명백히 못 미치면 사유를 돌려주고(→ 해당없음), 판단이 필요하면 null(→ AI).
+    /// 대상 면적: 신축은 연면적, 그 밖에는 늘어나는 연면적(증축분). 면적이 늘지 않는 리모델링·용도변경은 신축·증축이 아니다.
+    /// </summary>
+    internal static (string Reason, string Calculation)? ScreenOut(ItemScreen s, ProjectInput p)
+    {
+        var isNew = p.Mode == ProjectMode.신축;
+        var area = isNew ? p.GrossFloorArea : Math.Max(0, p.GrossFloorAreaDelta);
+        var areaLabel = isNew ? "연면적" : "증가 연면적";
+        var reasons = new List<string>();
+
+        if (s.NewWorkOnly && !isNew && area <= 0)
+            reasons.Add($"{p.Mode} 공사로 면적 증가가 없어 신축·증축 등 대상 행위가 아닙니다");
+        if (s.PublicOnly && !p.IsPublic)
+            reasons.Add("민간 건축물입니다(건축주가 국가·지방자치단체·공공기관이 아님) — 공공 건축물만 의무 대상");
+        if (s.MinArea is double min && area < min && !(s.NewWorkOnly && !isNew && area <= 0))
+            reasons.Add($"{areaLabel} {area:#,##0.00}㎡로 기준 {min:#,##0}㎡ 미만");
+        if (reasons.Count == 0) return null;
+
+        var calc = s.MinArea is double m ? $"{areaLabel} {area:#,##0.00} ㎡ {(area < m ? "<" : "≥")} {m:#,##0} ㎡" : "";
+        return (string.Join(". ", reasons) + ". 따라서 해당 없음.", calc);
     }
 
     /// <summary>정량 항목의 판정과 산정식 채움. 항목 Id로 계산 결과를 매핑한다.</summary>

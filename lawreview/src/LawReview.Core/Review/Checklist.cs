@@ -37,6 +37,22 @@ public sealed class ChecklistItem
     public List<LawBasis> Basis { get; set; } = new(); // 근거 법령·조문 (우선순위 순서대로)
     public string? LegalCriterion { get; set; }        // 법적 기준 요약 (요약표용)
     public string? Note { get; set; }
+    /// <summary>
+    /// AI에 넘기기 전에 코드로 거르는 대상 요건(행위·규모·주체). 하나라도 명백히 못 미치면 "해당없음"으로 확정한다.
+    /// 숫자 비교로 끝나는 판단을 AI에게 맡겨 "확인필요"가 나오던 문제(연면적 331㎡인데 에너지효율 확인필요 등) 때문.
+    /// </summary>
+    public ItemScreen? Screen { get; set; }
+}
+
+/// <summary>항목의 대상 요건. 모두 "이 조건을 만족해야 대상"이라는 뜻이다.</summary>
+public sealed class ItemScreen
+{
+    /// <summary>신축·증축·개축·재축만 대상 (면적이 늘지 않는 리모델링·대수선·용도변경은 대상 아님).</summary>
+    public bool NewWorkOnly { get; set; }
+    /// <summary>대상 면적 하한(㎡): 신축은 연면적, 그 밖에는 증가 연면적.</summary>
+    public double? MinArea { get; set; }
+    /// <summary>국가·지방자치단체·공공기관이 건축하는 경우만 대상.</summary>
+    public bool PublicOnly { get; set; }
 }
 
 /// <summary>근거 법령 참조. LawName의 "{시}"/"{구}"는 프로젝트의 지자체명으로 치환된다.</summary>
@@ -44,8 +60,16 @@ public sealed class LawBasis
 {
     public string LawName { get; set; } = "";
     public string? Article { get; set; }               // 조문 번호 ("48의2" 형식 지원)
-    /// <summary>조문 제목 키워드. 조례처럼 지자체마다 조문번호가 다른 경우 번호 대신 사용.</summary>
+    /// <summary>
+    /// 조문 제목 키워드. 조례처럼 지자체마다 조문번호가 다른 경우 번호 대신 사용.
+    /// "|"로 여러 개를 줄 수 있다(예: "심의|건축위원회").
+    /// </summary>
     public string? ArticleTitleKeyword { get; set; }
+    /// <summary>
+    /// 제목으로 못 찾으면 본문에서 찾을 키워드. 서울시 건축 조례의 심의 사항은 제목이 "기능 및 절차 등"이라
+    /// 제목에 "심의"가 없다 — 본문의 "심의사항"으로 찾는다.
+    /// </summary>
+    public string? ArticleBodyKeyword { get; set; }
     /// <summary>별표 참조 (예: "별표 12"). 내용은 파일이므로 검토서에 원문 링크로 안내된다.</summary>
     public string? Annex { get; set; }
     [JsonConverter(typeof(JsonStringEnumConverter))]

@@ -70,7 +70,9 @@
     "inSummary": false,
     "judgment": "Ai",
     "basis": [
-      { "lawName": "{시} 건축 조례", "articleTitleKeyword": "심의", "target": "Ordinance" }
+      // 조례마다 제목이 다르다(서울: 제7조 "기능 및 절차 등") — 제목에 없으면 본문의 "심의사항"으로 찾는다.
+      { "lawName": "{시} 건축 조례", "articleTitleKeyword": "심의|건축위원회", "articleBodyKeyword": "심의사항", "target": "Ordinance" },
+      { "lawName": "건축법 시행령", "article": "5의5", "target": "Law" }
     ]
   },
   {
@@ -491,6 +493,7 @@
     "section": "각종 인증 의무 대상 여부",
     "order": 1,
     "judgment": "Ai",
+    "screen": { "newWorkOnly": true, "minArea": 1000, "publicOnly": true },
     "legalCriterion": "공공기관 신·증축 연면적 1,000㎡ 이상",
     "basis": [
       { "lawName": "신에너지 및 재생에너지 개발ㆍ이용ㆍ보급 촉진법", "article": "12", "target": "Law" },
@@ -503,6 +506,7 @@
     "section": "각종 인증 의무 대상 여부",
     "order": 2,
     "judgment": "Ai",
+    "screen": { "newWorkOnly": true, "minArea": 1000 },
     "legalCriterion": "신축·별동 증축 연면적 1,000㎡ 이상 (1등급 이상)",
     "basis": [
       { "lawName": "녹색건축물 조성 지원법", "article": "17", "target": "Law" },
@@ -515,7 +519,8 @@
     "section": "각종 인증 의무 대상 여부",
     "order": 4,
     "judgment": "Ai",
-    "legalCriterion": "신축·별동 증축 연면적 1,000㎡ 이상의 에너지절약계획서 제출 대상",
+    "screen": { "newWorkOnly": true, "minArea": 500 },
+    "legalCriterion": "신축·증축 — 에너지절약계획서 제출 대상(공동주택 외 연면적 500㎡ 이상 등, 시행령 별표 1), 1천㎡ 이상 4등급·그 외 5등급",
     "basis": [
       { "lawName": "녹색건축물 조성 지원법", "article": "17", "target": "Law" },
       { "lawName": "녹색건축물 조성 지원법 시행령", "article": "12", "target": "Law", "annex": "별표 1" }
@@ -527,6 +532,7 @@
     "section": "각종 인증 의무 대상 여부",
     "order": 5,
     "judgment": "Ai",
+    "screen": { "newWorkOnly": true, "minArea": 1000, "publicOnly": true },
     "legalCriterion": "공공기관 신축·별동 증축 연면적 1,000㎡ 이상",
     "note": "공공기관 에너지이용 합리화 추진에 관한 규정 제6조 — 법제처 조회 대상이 아니면 직접 확인",
     "basis": [
@@ -539,6 +545,7 @@
     "section": "각종 인증 의무 대상 여부",
     "order": 3,
     "judgment": "Ai",
+    "screen": { "newWorkOnly": true, "minArea": 3000, "publicOnly": true },
     "legalCriterion": "공공기관 연면적 3,000㎡ 이상",
     "basis": [
       { "lawName": "녹색건축물 조성 지원법", "article": "16", "target": "Law" }
@@ -550,7 +557,8 @@
     "section": "각종 인증 의무 대상 여부",
     "order": 6,
     "judgment": "Ai",
-    "legalCriterion": "국가·지자체가 신축하는 공공시설 인증 의무",
+    "screen": { "newWorkOnly": true },
+    "legalCriterion": "신축·증축(별동)·개축(전부)·재축하는 공공건물·공중이용시설 — 국가·지자체·공공기관(제2호) 또는 그 외 자의 대통령령 시설(제3호)",
     "basis": [
       { "lawName": "장애인ㆍ노인ㆍ임산부 등의 편의증진 보장에 관한 법률", "article": "10의2", "target": "Law" }
     ]

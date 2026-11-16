@@ -79,7 +79,11 @@ public sealed class ClaudeJudgmentProvider : IJudgmentProvider
         "당신은 건축 인허가 법규검토 전문가다. 제시된 조문 원문과 프로젝트 개요를 근거로, " +
         "해당 검토 항목이 이 프로젝트에 적용되는지 판정한다. " +
         "반드시 JSON 하나만 출력한다: {\"판정\":\"적용|해당없음|확인필요\",\"사유\":\"근거 조항을 인용한 한두 문장\"}. " +
-        "제시된 조문 밖의 내용을 근거로 삼지 말고, 조문만으로 판단이 불가능하면 \"확인필요\"로 답한다.";
+        "제시된 조문 밖의 내용을 근거로 삼지 않는다. 그러나 실무자처럼 해석한다: " +
+        "(1) 조문 제목이나 표현이 달라도 같은 제도를 정하면 그 조문으로 판단한다(예: 조례의 '기능 및 절차' 조문이 정한 건축위원회 심의사항 = 심의 대상). " +
+        "(2) 대상 요건(건축 주체·행위·규모·용도) 중 하나라도 프로젝트 개요로 명백히 충족되지 않으면 '해당없음'이다. " +
+        "세부 기준이 대통령령에 위임되어 조문에 없더라도, 조문 자체의 요건(예: 국가·지자체·공공기관이 건축, 신축·증축, 연면적 하한)에서 이미 벗어나면 '해당없음'이다. " +
+        "(3) '확인필요'는 요건 충족 여부를 정하는 데 필요한 프로젝트 사실이 개요에 없을 때만 쓰고, 무엇이 더 필요한지 사유에 적는다.";
 
     internal static string BuildPrompt(ChecklistItem item, IReadOnlyList<CitedArticle> articles, ProjectInput p)
     {
@@ -87,8 +91,20 @@ public sealed class ClaudeJudgmentProvider : IJudgmentProvider
         sb.AppendLine("## 프로젝트 개요");
         sb.AppendLine($"- 사업명: {p.ProjectName}");
         sb.AppendLine($"- 대지위치: {p.SiteAddress} ({p.Province} {p.City})");
-        sb.AppendLine($"- 지역/지구: {string.Join(", ", p.UseZones)}");
+        // 토지이용계획확인원의 지역·지구 전체다. 여기 없는 지역·지구·구역(가로구역별 최고높이 제한지역,
+        // 경관지구, 지구단위계획구역 등)은 지정되지 않은 것으로 보고 판단하게 한다 — 안 그러면 "지정 여부 확인필요"가 나온다.
+        sb.AppendLine($"- 지역/지구(토지이용계획확인원 전체 목록 — 여기 없는 지역·지구·구역은 지정되지 않음): {string.Join(", ", p.UseZones)}");
         sb.AppendLine($"- 용도: {p.PrimaryUse}, 대지면적: {p.SiteArea:#,##0.00} ㎡");
+        sb.AppendLine($"- 공사 종류: {p.Mode}" + (p.Mode == ProjectMode.신축 ? "" :
+            $" (기존 연면적 {p.ExistingGrossFloorArea:#,##0.00} ㎡ → 변경후 {p.GrossFloorArea:#,##0.00} ㎡, 증감 {p.GrossFloorAreaDelta:+#,##0.00;-#,##0.00;0} ㎡)"));
+        sb.AppendLine($"- 건축주 구분: {(p.IsPublic ? "공공(국가·지방자치단체·공공기관)" : "민간")}");
+        if (p.Mode != ProjectMode.신축 && (p.ExistingHeight is { Length: > 0 } || p.ExistingScale is { Length: > 0 }))
+        {
+            string Same(string? a, string? b) => (a ?? "").Trim() == (b ?? "").Trim() ? " (변경 없음)" : "";
+            sb.AppendLine($"- 최고높이: 변경전 {p.ExistingHeight} m → 변경후 {p.PlannedHeight} m{Same(p.ExistingHeight, p.PlannedHeight)}");
+            sb.AppendLine($"- 건축규모: 변경전 {p.ExistingScale} → 변경후 {p.PlannedScale}{Same(p.ExistingScale, p.PlannedScale)}");
+        }
+        else if (p.PlannedHeight is { Length: > 0 }) sb.AppendLine($"- 최고높이: {p.PlannedHeight} m");
         sb.AppendLine($"- 규모: 지상 {p.PlannedFloorsAbove}층 / 지하 {p.PlannedFloorsBelow}층, 연면적 {p.GrossFloorArea:#,##0.00} ㎡, 건축면적 {p.PlannedBuildingArea:#,##0.00} ㎡");
         sb.AppendLine();
         sb.AppendLine($"## 검토 항목: {item.Title}");
