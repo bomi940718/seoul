@@ -105,27 +105,41 @@ public class QuantitativeCalculatorTests
     [Fact]
     public void 확장형_친환경은_50대_미만이면_대상_아님을_표기한다()
     {
-        // 실무 표준 서식의 표기: 계획 12대 → "주차대수 50대 이상 해당"
+        // 계획 12대 → 대상 아님을 적는다(빈칸으로 두지 않는다)
         var o = QuantitativeCalculator.Calculate(DungokProject());
         Assert.Null(o.Parking.ExpandedSpaces);
         Assert.Null(o.Parking.EcoSpaces);
-        Assert.Equal("주차대수 50대 이상 해당", o.Parking.ExpandedFormula);
-        Assert.Equal("주차대수 50대 이상 해당", o.Parking.EcoFormula);
+        Assert.Equal("해당 없음 (주차대수 50대 이상 해당)", o.Parking.ExpandedFormula);
+        Assert.Equal("해당 없음 (주차대수 50대 이상 해당)", o.Parking.EcoFormula);
+    }
+
+    [Fact]
+    public void 장애인전용은_10대_미만이면_해당_없음이고_끝수는_올린다()
+    {
+        var small = QuantitativeCalculator.CalculateParking(1600, new ParkingRule());   // 8대
+        Assert.Null(small.DisabledSpaces);
+        Assert.Equal("해당 없음 (주차대수 10대 이상 해당)", small.DisabledFormula);
+
+        // 40대 x 3% = 1.2 → 끝수는 1대로 본다 → 2대 (편의증진법 시행령 별표 2)
+        var mid = QuantitativeCalculator.CalculateParking(8000, new ParkingRule());
+        Assert.Equal(40, mid.TotalSpaces);
+        Assert.Equal(2, mid.DisabledSpaces);
     }
 
     [Fact]
     public void 법정_연면적_기준_주차는_확장형_친환경까지_산정한다()
     {
-        // 법정 열은 법정 연면적(21,105.35)으로 계산 → 105.53 → 106대,
-        // 106 x 3% = 3.18 → 3대 (장애인·확장형·친환경 동일)
+        // 법정 열은 법정 연면적(21,105.35)으로 계산 → 105.53 → 106대.
+        // 장애인 106 x 3% = 3.18 → 끝수 올림 4대 / 확장형 30% = 31.8 → 32대 / 친환경 5% = 5.3 → 5대
+        // (옛 둔곡 검토서는 확장형·친환경도 3%로 적었으나 법령 기준이 아니다)
         var o = QuantitativeCalculator.Calculate(DungokProject());
         var legal = o.ParkingAtLegalMax;
         Assert.NotNull(legal);
         Assert.Equal(106, legal!.TotalSpaces);
-        Assert.Equal(3, legal.DisabledSpaces);
-        Assert.Equal(3, legal.ExpandedSpaces);
-        Assert.Equal(3, legal.EcoSpaces);
-        Assert.Contains("3.18", legal.EcoFormula);
+        Assert.Equal(4, legal.DisabledSpaces);
+        Assert.Equal(32, legal.ExpandedSpaces);
+        Assert.Equal(5, legal.EcoSpaces);
+        Assert.Contains("5.30", legal.EcoFormula);
         // 법정 열의 전체 표기는 "이상"이 붙는다
         Assert.Equal("106 대 이상 (장애인 포함)", legal.TotalDisplay);
     }

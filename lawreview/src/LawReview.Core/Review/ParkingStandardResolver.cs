@@ -84,9 +84,13 @@ public static class ParkingStandardResolver
     /// </summary>
     private static AnnexRow? MatchUse(List<AnnexRow> rows, string primaryUse)
     {
-        var use = primaryUse.Trim();
+        // 띄어쓰기를 지우고 비교한다 — 건축물대장은 "제2종근린생활시설", 별표는 "제2종 근린생활시설"로 쓴다.
+        // 이걸 놓치면 "그 밖의 건축물"(더 느슨한 기준)로 떨어진다(2026-11-16 동교동 153-8에서 실제로 그랬다).
+        static string N(string s) => System.Text.RegularExpressions.Regex.Replace(s, @"[\s·ㆍ]", "");
+        var use = N(primaryUse);
+        if (use.Length == 0) return null;
         return rows.Where(r => r.AreaPerSpace is not null)
-            .FirstOrDefault(r => r.Uses.Any(u => use.Contains(u) || u.Contains(use)));
+            .FirstOrDefault(r => r.Uses.Any(u => N(u).Length > 0 && (use.Contains(N(u)) || N(u).Contains(use))));
     }
 
     /// <summary>

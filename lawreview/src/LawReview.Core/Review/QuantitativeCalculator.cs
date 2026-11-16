@@ -131,12 +131,17 @@ public static class QuantitativeCalculator
             ? $"{r.TotalSpaces} 대 이상{includeNote}"
             : $"{r.TotalSpaces} 대{includeNote}";
 
+        // 장애인전용: 편의증진법 시행령 별표 2 — 부설주차장 10대 미만 제외, "소수점 이하의 끝수는 이를 1대로 본다"(올림).
         if (r.TotalSpaces >= rule.DisabledMinTotal)
         {
             r.RawDisabled = r.TotalSpaces * rule.DisabledRatio;
-            r.DisabledSpaces = Math.Max(1, (int)Math.Round(r.RawDisabled.Value, MidpointRounding.AwayFromZero));
+            r.DisabledSpaces = Math.Max(1, (int)Math.Ceiling(Math.Round(r.RawDisabled.Value, 6)));
             r.DisabledFormula =
                 $"{r.TotalSpaces} 대 x {(rule.DisabledRatio * 100).ToString("0.00", Ci)} % = {N(r.RawDisabled.Value)} 대 ({r.DisabledSpaces} 대)";
+        }
+        else
+        {
+            r.DisabledFormula = $"해당 없음 (주차대수 {rule.DisabledMinTotal}대 이상 해당)";
         }
 
         if (r.TotalSpaces >= rule.ExpandedMinTotal)
@@ -149,7 +154,7 @@ public static class QuantitativeCalculator
         else
         {
             // 대상이 아니면 검토서에 그 사실을 적는다 (빈칸으로 두지 않는다).
-            r.ExpandedFormula = $"주차대수 {rule.ExpandedMinTotal}대 이상 해당";
+            r.ExpandedFormula = $"해당 없음 (주차대수 {rule.ExpandedMinTotal}대 이상 해당)";
         }
 
         if (r.TotalSpaces >= rule.EcoMinTotal)
@@ -161,7 +166,7 @@ public static class QuantitativeCalculator
         }
         else
         {
-            r.EcoFormula = $"주차대수 {rule.EcoMinTotal}대 이상 해당";
+            r.EcoFormula = $"해당 없음 (주차대수 {rule.EcoMinTotal}대 이상 해당)";
         }
 
         return r;

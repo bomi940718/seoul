@@ -102,6 +102,18 @@ public class BuildingRegisterTests
     }
 
     [Fact]
+    public void 게이트웨이_연결실패_JSON은_빈_결과가_아니라_오류다()
+    {
+        // 2026-11-16 실측: 쉬었다 들어온 첫 요청에 503과 함께 오는 형식. 빈 결과로 넘기면 "건축물 없음"이 된다.
+        const string json = """
+            {"OpenAPI_ServiceResponse":{"cmmMsgHeader":{"errMsg":"SERVICETIMEOUT_ERROR",
+             "returnAuthMsg":"서비스 연결실패 에러","returnReasonCode":"05"}}}
+            """;
+        var ex = Assert.Throws<InvalidOperationException>(() => BuildingRegisterClient.ParsePage(json));
+        Assert.Contains("응답하지 않습니다", ex.Message);
+    }
+
+    [Fact]
     public void 총괄표제부가_없으면_동별_합으로_필지_합계를_낸다()
     {
         var reg = new BuildingRegister("1168010100107370000", null, new()

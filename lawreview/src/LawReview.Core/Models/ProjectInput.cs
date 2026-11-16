@@ -141,12 +141,17 @@ public sealed class ZoningLimits
 public sealed class ParkingRule
 {
     public double AreaPerSpace { get; set; } = 200.0;  // 시설면적 N ㎡당 1대
-    public double DisabledRatio { get; set; } = 0.03;  // 장애인전용 비율 (주차대수의 3% 이상)
-    public int DisabledMinTotal { get; set; } = 10;    // 장애인전용 의무 발생 최소 주차대수
-    public int ExpandedMinTotal { get; set; } = 50;    // 확장형 의무 발생 최소 주차대수
-    public double ExpandedRatio { get; set; } = 0.03;
-    public int EcoMinTotal { get; set; } = 50;         // 친환경(환경친화적 자동차) 의무 발생 최소 주차대수
-    public double EcoRatio { get; set; } = 0.03;
+    // 장애인전용: 편의증진법 시행령 별표 2 — 부설주차장 10대 이상, 비율은 2~4% 범위에서 지자체 조례(기본 3%).
+    public double DisabledRatio { get; set; } = 0.03;
+    public int DisabledMinTotal { get; set; } = 10;
+    // 확장형: 주차장법 시행규칙 제11조제4항 → 제6조제1항제14호 — 50대 이상 부설주차장, 총수의 30% 이상.
+    // (2026-11-16 이전에는 3%로 잘못 들어 있었다 — 옛 검토서의 표기를 그대로 옮긴 것)
+    public int ExpandedMinTotal { get; set; } = 50;
+    public double ExpandedRatio { get; set; } = 0.30;
+    // 친환경(전용주차구역): 환경친화적자동차법 시행령 제18조의5·제18조의6 — 총주차대수 50개 이상으로서
+    // 시·도 조례가 정하는 시설, 총주차대수의 5% 이상(2022.1.28. 전 건축허가 기축시설은 2% 이상).
+    public int EcoMinTotal { get; set; } = 50;
+    public double EcoRatio { get; set; } = 0.05;
     public string ParkingType { get; set; } = "";      // 주차형식 (예: 자주식) — 설계개요 표 첫 행
     public string Source { get; set; } = "";           // 근거 (예: 대전광역시 주차장 조례 제16조)
 }

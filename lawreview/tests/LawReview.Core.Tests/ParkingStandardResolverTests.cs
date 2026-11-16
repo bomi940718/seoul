@@ -38,6 +38,8 @@ public class ParkingStandardResolverTests
     [InlineData("위락시설", 100)]
     [InlineData("판매시설", 150)]
     [InlineData("창고시설", 400)]
+    [InlineData("제1종근린생활시설", 200)]   // 건축물대장 표기(띄어쓰기 없음)도 별표 "제1종 근린생활시설"과 맞아야 한다
+    [InlineData("문화및집회시설", 150)]
     public void 용도별_설치기준을_찾는다(string use, double expected)
     {
         var r = ParkingStandardResolver.Resolve(Decree(), use);

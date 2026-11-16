@@ -142,17 +142,21 @@ public sealed class BuildingRegisterClient
                         $"건축물대장 서버 오류({(int)res.StatusCode}) — 공공데이터포털 쪽 문제입니다. 잠시 뒤 다시 하세요.");
                 return ParsePage(text);
             }
-            catch (Exception ex) when (attempt < 2 && !ct.IsCancellationRequested &&
-                                       ex is HttpRequestException or TaskCanceledException or JsonException
-                                       || ex is InvalidOperationException ioe && attempt < 2 && IsTransient(ioe.Message))
+            catch (Exception ex) when (attempt < MaxRetries && !ct.IsCancellationRequested &&
+                                       (ex is HttpRequestException or TaskCanceledException or JsonException
+                                        || ex is InvalidOperationException ioe && IsTransient(ioe.Message)))
             {
-                await Task.Delay(400 * (attempt + 1), ct);
+                // 0.5 → 1.5 → 3초. 첫 요청이 깨우는 역할을 하고 다음부터는 바로 응답한다.
+                await Task.Delay(RetryDelaysMs[attempt], ct);
             }
         }
     }
 
+    private const int MaxRetries = 3;
+    private static readonly int[] RetryDelaysMs = { 500, 1500, 3000 };
+
     private static bool IsTransient(string message) =>
-        !message.Contains("키") && !message.Contains("한도") && !message.Contains("거부");
+        !message.Contains("키가") && !message.Contains("한도") && !message.Contains("거부");
 
     /// <summary>
     /// 응답 한 쪽을 읽는다. 오류는 사람이 고칠 수 있는 말로 바꿔 던진다 —
@@ -169,6 +173,15 @@ public sealed class BuildingRegisterClient
             throw new InvalidOperationException(ExplainError("", t[..Math.Min(200, t.Length)]));
 
         using var doc = JsonDocument.Parse(t);
+        // 게이트웨이 오류는 JSON이어도 형식이 다르다 — {"OpenAPI_ServiceResponse":{"cmmMsgHeader":{...}}}.
+        // 2026-11-16 실측: 한동안 쉬었다 들어온 첫 요청이 5초 뒤 503 + 이 형식(05 서비스 연결실패)으로 온다.
+        // 놓치면 "건축물 없음"으로 보인다.
+        if (doc.RootElement.TryGetProperty("OpenAPI_ServiceResponse", out var gw))
+        {
+            var h = gw.TryGetProperty("cmmMsgHeader", out var hh) ? hh : gw;
+            throw new InvalidOperationException(ExplainError(Str(h, "returnReasonCode") ?? "",
+                Str(h, "returnAuthMsg") ?? Str(h, "errMsg") ?? ""));
+        }
         var root = doc.RootElement.TryGetProperty("response", out var r) ? r : doc.RootElement;
         if (root.TryGetProperty("header", out var header))
         {

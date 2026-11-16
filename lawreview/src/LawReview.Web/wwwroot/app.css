@@ -233,3 +233,12 @@ dialog::backdrop{background:rgba(0,0,0,.35)}
 .v-ng{color:#b3261e;font-weight:600}
 .v-warn{color:#9a5b12;font-weight:600}
 .delta-tag{color:var(--muted);font-size:11px;margin-right:4px;white-space:nowrap}
+/* 증감 열 — 신축에서는 감춘다 */
+body[data-mode="신축"] .col-delta{display:none}
+.col-delta .cell.calc{color:#2b4a6b}
+/* 서류 카드 */
+.doc-cards{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:8px}
+.doc-card{border:1px solid var(--line,#d9dde3);border-radius:6px;padding:10px 12px;display:flex;flex-direction:column;gap:6px}
+.doc-actions{display:flex;gap:6px;flex-wrap:wrap}
+.doc-actions label.btn{cursor:pointer}
+.doc-status{font-size:12px;line-height:1.5}

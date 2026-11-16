@@ -101,7 +101,10 @@ public static class ApiEndpoints
                         farBasis = limits.FloorAreaBasis,
                         zone = limits.MatchedZone,
                     },
-                    parking = await ResolveParkingAsync(s, index.Province, index.City, dto.PrimaryUse),
+                    // 용도 칸이 비어 있으면 대장 주용도로 주차 기준을 찾는다 — 기존 건축물 검토는 용도부터 대장에 있다.
+                    parking = await ResolveParkingAsync(s, index.Province, index.City,
+                        dto.PrimaryUse is { Length: > 0 } u ? u
+                        : register?.Buildings.FirstOrDefault(b => !b.IsAnnex)?.MainUse),
                     landscape = await ResolveLandscapeAsync(s, index.Province, index.City),
                 });
             }
@@ -141,6 +144,35 @@ public static class ApiEndpoints
             {
                 return Results.Ok(new { ok = false, message = ex.Message });
             }
+        });
+
+        // ── 발급 서류 PDF 읽기 (소유자·위반건축물·지목 — 공개 API에 없는 항목) ──────
+        app.MapPost("/api/docs/parse", async (HttpRequest req) =>
+        {
+            var form = await req.ReadFormAsync();
+            var file = form.Files.FirstOrDefault();
+            if (file is null || file.Length == 0) return Results.Ok(new { ok = false, message = "PDF 파일을 고르세요." });
+            if (file.Length > 30 * 1024 * 1024) return Results.Ok(new { ok = false, message = "30MB가 넘는 파일은 읽지 않습니다." });
+            var kind = (string?)form["kind"] switch
+            {
+                "building" => IssuedDocKind.BuildingRegister,
+                "land" => IssuedDocKind.LandRegister,
+                _ => IssuedDocKind.LandUsePlan,
+            };
+            using var ms = new MemoryStream();
+            await file.CopyToAsync(ms);
+            var info = IssuedDocumentReader.Read(kind, ms.ToArray());
+            return Results.Ok(new { ok = true, fileName = file.FileName, info });
+        });
+
+        // ── 발급·열람 사이트를 기본 브라우저로 연다 (정해 둔 정부 사이트만) ─────────
+        app.MapPost("/api/open-url", (OpenRequest req) =>
+        {
+            if (!Uri.TryCreate(req.Path, UriKind.Absolute, out var u) || u.Scheme != Uri.UriSchemeHttps
+                || !AllowedHosts.Contains(u.Host))
+                return Results.Ok(new { ok = false, message = "허용하지 않은 주소입니다." });
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(u.AbsoluteUri) { UseShellExecute = true });
+            return Results.Ok(new { ok = true });
         });
 
         // ── 용도 판정 (변경후 용도를 사람이 바꿨을 때 다시 판정) ─────────────
@@ -185,9 +217,9 @@ public static class ApiEndpoints
                     ["landscape"] = Row(null, o.LandscapeFormula),
                     ["parkingOut"] = Row(o.Parking.TotalFormula, legalParking?.TotalFormula,
                         o.ExistingParking?.TotalFormula),
-                    ["parkingDis"] = Row(o.Parking.DisabledFormula, legalParking?.DisabledFormula),
-                    ["parkingExt"] = Row(o.Parking.ExpandedFormula, legalParking?.ExpandedFormula),
-                    ["parkingEco"] = Row(o.Parking.EcoFormula, legalParking?.EcoFormula),
+                    ["parkingDis"] = Row(o.Parking.DisabledFormula, legalParking?.DisabledFormula, o.ExistingParking?.DisabledFormula),
+                    ["parkingExt"] = Row(o.Parking.ExpandedFormula, legalParking?.ExpandedFormula, o.ExistingParking?.ExpandedFormula),
+                    ["parkingEco"] = Row(o.Parking.EcoFormula, legalParking?.EcoFormula, o.ExistingParking?.EcoFormula),
                     ["parkingAll"] = Row(o.Parking.TotalDisplay, legalParking?.TotalDisplay,
                         o.ExistingParking?.TotalDisplay),
                 },
@@ -548,6 +580,10 @@ public static class ApiEndpoints
                 ZoneUseResolver.Judge(rules, u.Use, BuildingRegisterClient.CategoryNoFromCode(u.Code))),
         };
     }
+
+    /// <summary>서류 발급·열람 사이트 — 이 밖의 주소는 열지 않는다.</summary>
+    private static readonly HashSet<string> AllowedHosts = new(StringComparer.OrdinalIgnoreCase)
+        { "www.gov.kr", "plus.gov.kr", "www.eum.go.kr", "cloud.eais.go.kr" };
 
     // 시행령은 지역과 무관하므로 한 번만 받는다. 조례 별표는 (조례, 용도지역)마다 한 번.
     private static LawText? _decree;
