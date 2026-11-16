@@ -27,6 +27,7 @@
 
 <nav class="tabs" id="tabs">
   <button class="tab active" data-page="overview">설계개요</button>
+  <button class="tab" data-page="docs">서류 대조</button>
   <button class="tab" data-page="laws">검토법규</button>
   <button class="tab" data-page="summary">요약 검토서</button>
   <button class="tab" data-page="cert">인증 의무</button>
@@ -39,6 +40,7 @@
 
   <!-- ─────────── 설계개요 (검토서 p3) ─────────── -->
   <section class="page active" id="page-overview">
+    <div class="guide" id="guide"><!-- app.js가 모드에 맞춰 채운다 --></div>
     <div class="sheet">
       <h2 class="sheet-title">■ 설계개요</h2>
 
@@ -49,8 +51,7 @@
           <tr>
             <th>대 지 위 치</th>
             <td colspan="2"><div class="cell" data-field="siteAddress" contenteditable="true" spellcheck="false" data-ph="지번 또는 도로명 주소 — 입력 후 Enter"></div></td>
-            <td class="act"><button class="btn sm" id="btnLookup">자동조회</button>
-              <button class="btn sm ghost" id="btnRegister" title="기존 건축물(변경전) 값을 건축물대장에서 채웁니다">건축물대장</button></td>
+            <td class="act"><button class="btn sm" id="btnLookup" title="토지대장·토지이용계획·건축물대장·법정 한도·허용 용도를 한 번에 조회">자동조회</button></td>
           </tr>
           <tr><th>지 역 / 지 구</th><td colspan="3"><div class="cell multi" data-field="useZones" contenteditable="true"></div></td></tr>
           <tr>
@@ -100,7 +101,8 @@
           <tr>
             <th style="width:130px">동</th>
             <th style="width:80px">층 별</th>
-            <th>용 도</th>
+            <th class="col-before" style="width:150px">변경전 용도</th>
+            <th id="thUse">용 도</th>
             <th class="col-before" style="width:110px">변경전 전용 (㎡)</th>
             <th class="col-before" style="width:110px">변경전 공용 (㎡)</th>
             <th style="width:115px" id="thExcl">전용 (㎡)</th>
@@ -113,22 +115,38 @@
         <tbody id="areaBody"></tbody>
         <tfoot>
           <tr>
-            <th colspan="7">용적률 산정용 연면적</th>
+            <th colspan="8">용적률 산정용 연면적</th>
             <td class="total" id="areaGross">-</td>
             <td colspan="2" class="sub">연면적 제외 층은 비고에서 제외 표시</td>
           </tr>
           <tr class="opt-change">
-            <th colspan="7">변경전 연면적 / 증감</th>
+            <th colspan="8">변경전 연면적 / 증감</th>
             <td class="total" id="areaBefore">-</td>
             <td colspan="2" class="sub" id="areaDelta"></td>
           </tr>
           <tr>
-            <th colspan="7">전체 바닥면적 합계</th>
+            <th colspan="8">전체 바닥면적 합계</th>
             <td class="total" id="areaTotal">-</td>
             <td colspan="2"></td>
           </tr>
         </tfoot>
       </table>
+    </div>
+  </section>
+
+  <!-- ─────────── 서류 대조 (토지대장 · 건축물대장 · 토지이용계획) ─────────── -->
+  <section class="page" id="page-docs">
+    <div class="sheet">
+      <h2 class="sheet-title">■ 서류 대조 — 토지대장 · 건축물대장 · 토지이용계획</h2>
+      <p class="hint-inline">자동조회 결과를 서로 맞춰 봅니다. 불일치·확인 필요 항목은 원본 서류(정부24·세움터·토지이음)로 확인하세요.</p>
+      <table class="doc"><thead><tr><th style="width:150px">항 목</th><th>토지대장 / 토지이용계획</th><th>건축물대장</th><th style="width:110px">결 과</th><th>비 고</th></tr></thead>
+        <tbody id="docsBody"><tr><td colspan="5" class="empty">설계개요에서 대지위치를 조회하면 표시됩니다.</td></tr></tbody></table>
+    </div>
+    <div class="sheet">
+      <h2 class="sheet-title">■ 용도지역 안 용도 적합 — 대장 용도 · 변경후 용도</h2>
+      <p class="hint-inline" id="useNote"></p>
+      <table class="doc"><thead><tr><th style="width:90px">구 분</th><th style="width:220px">용 도</th><th style="width:110px">판 정</th><th>근 거</th><th>조건 · 사유</th></tr></thead>
+        <tbody id="useBody"><tr><td colspan="5" class="empty">대지위치를 조회하면 표시됩니다.</td></tr></tbody></table>
     </div>
   </section>
 

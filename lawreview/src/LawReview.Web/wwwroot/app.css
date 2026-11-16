@@ -223,3 +223,13 @@ dialog::backdrop{background:rgba(0,0,0,.35)}
   /* 판정은 인쇄물에서 글자로만 보이면 된다 */
   .verdict-pick{appearance:none;border:0;padding:1px 6px}
 }
+
+/* 작업 순서 안내 (설계개요 맨 위) */
+.guide{margin:0 auto 10px;max-width:1160px;padding:8px 14px;border-radius:6px;background:#eef4fb;color:#2b4a6b;font-size:12.5px;line-height:1.7}
+.guide b{color:#1d3a5c}
+@media print{.guide{display:none!important}}
+/* 서류 대조 · 용도 판정 결과 */
+.v-ok{color:#1d7a3a;font-weight:600}
+.v-ng{color:#b3261e;font-weight:600}
+.v-warn{color:#9a5b12;font-weight:600}
+.delta-tag{color:var(--muted);font-size:11px;margin-right:4px;white-space:nowrap}

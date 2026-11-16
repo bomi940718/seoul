@@ -79,6 +79,21 @@ function cellTd(row, v, slot, cls) {
   td.className = cls;
   const kind = slot === "legal" ? (row.legal || "input") : (row.plan || "input");
 
+  // 기존 건축물 모드의 변경후 건축면적: 증감(±)만 넣고 결과는 엔진 산정식으로 보여준다.
+  if (row.key === "buildingArea" && slot === "after") {
+    const wrap = document.createElement("div");
+    wrap.className = "param-cell";
+    const t = tag("증감 ±"); t.className = "delta-tag";
+    wrap.appendChild(t);
+    const c = makeCell(row.key, "delta", v.delta, "num param", "0.00");
+    c.title = "기존 건축면적에서 늘거나 줄어드는 면적 (예: 증축 +25.5, 철거 -10)";
+    wrap.appendChild(c);
+    wrap.appendChild(tag("m²"));
+    td.appendChild(wrap);
+    td.appendChild(derivedBox(row.key, "afterCalc", v.afterCalc));
+    return td;
+  }
+
   if (kind === "derived") {
     td.appendChild(derivedBox(row.key, slot, v[slot]));
     return td;
@@ -159,16 +174,20 @@ function renderAreaTable() {
   body.innerHTML = "";
   if (state.floors.length === 0) addFloorRow(false);
 
+  const changeMode = state.mode !== "신축";
   state.floors.forEach((f, i) => {
+    if (changeMode) normalizeDelta(f);
     const tr = document.createElement("tr");
     tr.appendChild(areaCell(i, "bldg", "동"));
     tr.appendChild(areaCell(i, "floor", "층"));
-    tr.appendChild(areaCell(i, "use", "용도"));
-    // 신축이 아니면 기존 면적을 함께 입력한다 (CSS가 신축 모드에서 이 열을 감춘다)
+    // 신축이 아니면 기존 용도·면적을 함께 둔다 (CSS가 신축 모드에서 이 열을 감춘다)
+    tr.appendChild(areaCell(i, "beforeUse", "변경전 용도", false, "col-before"));
+    tr.appendChild(areaCell(i, "use", changeMode ? "변경후 용도" : "용도"));
     tr.appendChild(areaCell(i, "beforeExcl", "0.00", true, "col-before"));
     tr.appendChild(areaCell(i, "beforeCommon", "0.00", true, "col-before"));
-    tr.appendChild(areaCell(i, "excl", "0.00", true));
-    tr.appendChild(areaCell(i, "common", "0.00", true));
+    // 신축: 전용·공용을 직접 / 그 외: 증감(±)만 넣으면 변경후 = 변경전 + 증감
+    tr.appendChild(areaCell(i, changeMode ? "dExcl" : "excl", changeMode ? "±0.00" : "0.00", true));
+    tr.appendChild(areaCell(i, changeMode ? "dCommon" : "common", changeMode ? "±0.00" : "0.00", true));
 
     const sum = document.createElement("td");
     sum.className = "total";
@@ -221,7 +240,10 @@ function areaCell(i, field, ph, isNum, cls) {
   d.dataset.field = field;
   d.textContent = state.floors[i][field] ?? "";
   d.addEventListener("input", () => { state.floors[i][field] = d.textContent.trim(); });
-  d.addEventListener("blur", () => { renderAreaTable(); recalc(); });
+  d.addEventListener("blur", () => {
+    if (state.mode !== "신축") syncAfter(state.floors[i]);
+    renderAreaTable(); recalc(); scheduleUseJudge();
+  });
   d.addEventListener("paste", onAreaPaste);
   td.appendChild(d);
   return td;
@@ -242,13 +264,34 @@ function onAreaPaste(e) {
     if (c[2] !== undefined) target.use = c[2].trim();
     if (c[3] !== undefined) target.excl = c[3].trim();
     if (c[4] !== undefined) target.common = c[4].trim();
+    // 기존 건축물 모드에서는 붙여넣은 값을 변경후로 보고 증감을 계산한다.
+    if (state.mode !== "신축") { target.dExcl = undefined; target.dCommon = undefined; normalizeDelta(target); }
   });
   renderAreaTable();
   recalc();
   status(`면적표 ${rows.length}행 붙여넣기`);
 }
 
-const blankFloor = () => ({ bldg: "", floor: "", use: "", excl: "", common: "", exclude: false });
+const blankFloor = () => ({ bldg: "", floor: "", beforeUse: "", use: "", beforeExcl: "", beforeCommon: "",
+  dExcl: "", dCommon: "", excl: "", common: "", exclude: false });
+
+const r2 = (v) => Math.round(v * 100) / 100;
+
+/// 변경후 = 변경전 + 증감. 엔진은 변경후(excl/common)를 받으므로 증감을 넣을 때마다 맞춰 둔다.
+function syncAfter(f) {
+  const after = (b, d) => (num(b) || num(d) ? r2(num(b) + num(d)).toFixed(2) : "");
+  f.excl = after(f.beforeExcl, f.dExcl);
+  f.common = after(f.beforeCommon, f.dCommon);
+}
+
+/// 예전 저장본(변경후만 있고 증감이 없는 행)에서 증감을 되살린다.
+function normalizeDelta(f) {
+  const back = (after, before) =>
+    after === "" || after == null ? "" : (r2(num(after) - num(before)) ? String(r2(num(after) - num(before))) : "");
+  if (f.dExcl === undefined) f.dExcl = back(f.excl, f.beforeExcl);
+  if (f.dCommon === undefined) f.dCommon = back(f.common, f.beforeCommon);
+  syncAfter(f);
+}
 function addFloorRow(render = true) {
   const last = state.floors[state.floors.length - 1];
   const f = blankFloor();
@@ -299,8 +342,23 @@ function floorsByBuilding() {
 /// 면적표 머리글을 모드에 맞춘다 (신축은 "전용", 그 외는 "변경후 전용").
 function syncAreaHeaders() {
   const after = state.mode !== "신축";
-  $("#thExcl").textContent = after ? "변경후 전용 (㎡)" : "전용 (㎡)";
-  $("#thCommon").textContent = after ? "변경후 공용 (㎡)" : "공용 (㎡)";
+  $("#thExcl").textContent = after ? "증감 전용 (±㎡)" : "전용 (㎡)";
+  $("#thCommon").textContent = after ? "증감 공용 (±㎡)" : "공용 (㎡)";
+  $("#thUse").textContent = after ? "변경후 용도" : "용 도";
+  renderGuide();
+}
+
+/// 설계개요 맨 위 작업 순서 안내. 기존 건축물 모드는 순서가 달라서 따로 적는다.
+function renderGuide() {
+  const g = $("#guide");
+  if (!g) return;
+  g.innerHTML = state.mode === "신축"
+    ? `<b>① 대지위치</b> 입력 후 Enter — 토지대장·토지이용계획·법정 건폐율/용적률·허용 용도·주차·조경이 한 번에 채워집니다 ` +
+      `→ <b>② 건축면적·층별 면적표</b> 입력 → <b>③ 검토 실행</b>`
+    : `<b>① 대지위치</b> 입력 후 Enter — 토지·용도지역·법정 한도·허용 용도와 <b>건축물대장(변경전)</b>이 한 번에 채워집니다 ` +
+      `→ <b>② 서류 대조</b> 탭에서 토지대장·건축물대장·토지이용계획이 맞는지 확인 ` +
+      `→ <b>③ 바뀌는 것만 입력</b>: 층별 면적표의 <b>증감(±)</b>, 건축면적 증감, ${state.mode === "용도변경" ? "<b>변경후 용도</b>" : "증축 층은 행 추가"} — 위 표는 자동 반영 ` +
+      `→ <b>④ 검토 실행</b>`;
 }
 
 const fmt = (v) => (v || 0).toLocaleString("ko-KR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -374,7 +432,14 @@ async function doRecalc() {
 }
 
 // 건축면적은 사용자가 직접 넣는 값(설계 결과물).
-const buildingAreaInput = () => num(state.values.buildingArea?.[planSlot()]);
+// 신축이 아니면 변경후 = 변경전 + 증감. 증감을 비워 두면 변경전 그대로(리모델링 대부분).
+// 예전 저장본에 변경후 값만 있으면 그것을 쓴다.
+function buildingAreaInput() {
+  const v = state.values.buildingArea || {};
+  if (state.mode === "신축") return num(v.plan);
+  if (String(v.delta ?? "").trim() !== "") return r2(num(v.before) + num(v.delta));
+  return num(v.after) || num(v.before);
+}
 
 /// 현재 연면적에 해당하는 조례 조경 구간을 골라 법정 칸에 넣는다.
 function applyLandscapeRule() {
@@ -504,72 +569,65 @@ function applyLookup(d, inputAddress) {
   state.project.lookedUpAddress = d.address;
   state.project.pnu = d.pnu;
   state.lastLookupInput = inputAddress;
-  status(`자동조회 완료 — ${d.province} ${d.city} / 지목 ${d.category || "-"} / ${d.zones.length}개 지역·지구${addrNote}${limitNote}${parkNote}`);
+
+  // 서류 대조 탭이 쓰는 원자료 (토지대장 · 토지이용계획 · 건축물대장 · 용도 판정)
+  state.docs = {
+    address: d.address, landArea: d.area, category: d.category, zones: d.zones || [],
+    limits: d.limits || {}, register: d.register || null, registerError: d.registerError || "",
+    zoneUse: d.zoneUse || null, province: d.province, city: d.city,
+  };
+
+  const useNote = applyZoneUse(d.zoneUse);
+  const reg = d.register;
+  let regNote = "";
+  if (d.registerError) regNote = ` / 건축물대장: ${d.registerError}`;
+  else if (reg && !reg.hasBuildings) regNote = " / 건축물대장: 등록된 건축물 없음(빈 땅이거나 미등재)";
+  else if (reg && state.mode === "신축") regNote = ` / 건축물대장: 기존 건축물 ${reg.buildings.length}개동 있음 — 리모델링·증축·용도변경이면 위 모드를 바꾸세요`;
+
+  status(`자동조회 완료 — ${d.province} ${d.city} / 지목 ${d.category || "-"} / ${d.zones.length}개 지역·지구${addrNote}${limitNote}${parkNote}${useNote}${regNote}`);
+  renderDocs();
   recalc({ quiet: true });   // 완료 메시지를 "계산 갱신됨"으로 덮지 않는다
 
-  // 기존 건축물이 있는 공사면 대장 값(변경전)이 출발점이다 — 비어 있을 때만 이어서 불러온다.
-  if (state.mode !== "신축" && !hasBeforeValues()) loadRegister({ auto: true });
+  // 기존 건축물 공사면 대장 값(변경전)이 출발점이다 — 같은 조회에서 받아 온 것을 바로 채운다.
+  if (state.mode !== "신축" && reg?.hasBuildings) applyRegister(reg, { auto: true });
+}
+
+/// 용도지역 허용·불허 용도 (시행령 별표 + 도시계획 조례 별표). 지구단위계획 값이 들어 있으면 덮지 않는다 —
+/// 자동으로 넣은 값(직전 조회 결과)이 그대로 있을 때만 바꾼다.
+function applyZoneUse(z) {
+  if (!z) return " / 허용 용도: 조례를 찾지 못했습니다(법제처 키 확인)";
+  const put = (field, value) => {
+    const cur = (state.project[field] || "").trim();
+    if (!cur || cur === (state.project.autoUse?.[field] || "")) setField(field, value);
+  };
+  put("allowedUse", z.allowed); put("allowedUseBasis", z.basis);
+  put("disallowedUse", z.disallowed); put("disallowedUseBasis", z.basis);
+  state.project.autoUse = { allowedUse: z.allowed, allowedUseBasis: z.basis, disallowedUse: z.disallowed, disallowedUseBasis: z.basis };
+  const bad = (z.registerUses || []).filter((j) => j.verdict === "불허");
+  return ` / ${z.zone} 허용 용도 채움${z.ordinanceFound ? "" : "(조례 별표 미확인)"}`
+    + (bad.length ? ` / ⚠ 대장 용도 중 불허 ${bad.length}건 — 서류 대조 탭 확인` : "");
 }
 
 // ── 건축물대장 (변경전 값) ───────────────────────────────────
-// 리모델링·증축·용도변경은 기존 건축물 값이 출발점이다. 대장(공공데이터포털 건축HUB)에서
-// 건축면적·규모·높이·주차와 층별 면적을 가져와 **변경전 열**에 채운다.
-// 면적표는 변경후도 같은 값으로 채운다 — 리모델링은 대부분 그대로이고, 바뀌는 층만 고치면 된다.
-$("#btnRegister").addEventListener("click", () => loadRegister({ auto: false }));
-
+// 리모델링·증축·용도변경은 기존 건축물 값이 출발점이다. 자동조회가 대장(공공데이터포털 건축HUB)까지
+// 받아 오면 건축면적·규모·높이·주차와 층별 용도·면적을 **변경전 열**에 채운다.
+// 변경후는 변경전과 같게 시작한다(증감 0) — 바뀌는 것만 증감(±)으로 넣으면 된다.
 const hasBeforeValues = () =>
   num(state.values.buildingArea?.before) > 0 || state.floors.some((f) => num(f.beforeExcl) || num(f.beforeCommon));
 const floorsHaveData = () =>
   state.floors.some((f) => f.floor || f.use || num(f.excl) || num(f.common) || num(f.beforeExcl) || num(f.beforeCommon));
 
-let registerBusy = false;
-async function loadRegister({ auto }) {
-  const address = (state.project.siteAddress || "").trim();
-  if (registerBusy) return;
-  if (!address && !state.project.pnu) { status("대지위치를 먼저 입력하세요"); return; }
-
-  registerBusy = true;
-  const btn = $("#btnRegister");
-  btn.disabled = true; btn.textContent = "대장 조회 중…";
-  if (!auto) status(`건축물대장 조회 중… (${address})`);
-  try {
-    // 주소 칸이 조회 뒤 바뀌었으면 저장된 PNU는 다른 땅이다 — 주소로 다시 찾게 한다.
-    const pnu = address === state.project.lookedUpAddress ? state.project.pnu : null;
-    const r = await fetch("/api/building-register", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ pnu, address }),
-    });
-    applyRegister(await r.json(), auto);
-  } catch (e) {
-    status("건축물대장 조회 실패: 화면 호스트와 연결되지 않았습니다 — " + e.message);
-  } finally {
-    registerBusy = false;
-    btn.disabled = false; btn.textContent = "건축물대장";
-  }
-}
-
-function applyRegister(d, auto) {
-  if (!d.ok) {
-    if (/키/.test(d.message || "") && !auto) openSettings(d.message);
-    const prev = auto ? $("#status").textContent + " / " : "";
-    status(prev + "건축물대장: " + d.message);
-    return;
-  }
-  if (d.pnu) state.project.pnu = d.pnu;
-  if (!d.hasBuildings) {
-    status((auto ? $("#status").textContent + " / " : "") + "건축물대장에 등록된 건축물이 없습니다(빈 땅이거나 미등재)");
-    return;
-  }
-
+function applyRegister(d, { auto }) {
+  if (!d?.hasBuildings) return;
   const bs = d.buildings;
   const mains = bs.filter((b) => !b.isAnnex);
   const ref = mains.length ? mains : bs;
   const f2 = (v) => (v == null ? "" : Number(v).toFixed(2));
   const sum = (xs) => xs.reduce((s, x) => s + (x || 0), 0);
 
-  // 면적표에 이미 사람이 넣은 값이 있으면 묻고 덮는다.
+  // 면적표에 이미 사람이 넣은 값이 있으면 묻고 덮는다(같은 땅을 다시 조회한 경우 등).
   const fillFloors = !floorsHaveData() ||
-    (!auto && confirm("각 층별 면적표에 이미 값이 있습니다.\n건축물대장 층별 면적으로 다시 채울까요?\n(취소하면 설계개요 변경전 칸만 채웁니다)"));
+    confirm("각 층별 면적표에 이미 값이 있습니다.\n건축물대장 층별 용도·면적으로 다시 채울까요?\n(취소하면 설계개요 변경전 칸만 채웁니다)");
 
   // 설계개요 변경전 열
   setCell("buildingArea", "before", f2(d.totalBuildingArea));
@@ -584,11 +642,11 @@ function applyRegister(d, auto) {
   setCell("parkingType", "before", `${pmech ? "자주식+기계식" : "자주식"} (대장: 옥내 ${pin}대, 옥외 ${pout}대)`);
   setCell("parkingIn", "before", `${pin} 대`);
   if (!state.project.primaryUse && ref[0]?.mainUse) setField("primaryUse", ref[0].mainUse);
-  // 변경후가 비어 있으면 변경전과 같게 둔다(리모델링은 대부분 그대로) — 바뀌는 값만 고치면 된다.
-  for (const k of ["buildingArea", "scale", "height"])
+  // 규모·높이는 글 칸이라 변경후를 변경전과 같게 채워 둔다(바뀔 때만 고친다). 건축면적은 증감 칸이 따로 있다.
+  for (const k of ["scale", "height"])
     if (!String(state.values[k]?.after || "").trim() && state.values[k]?.before) setCell(k, "after", state.values[k].before);
 
-  // 각 층별 면적표 — 대장의 층별개요를 아래층부터. 동이 하나면 동 이름은 대장 표기 그대로.
+  // 각 층별 면적표 — 대장의 층별개요를 아래층부터. 변경후 용도·면적은 변경전과 같게(증감 0) 시작.
   let rows = 0, floorSum = 0;
   if (fillFloors) {
     state.floors = [];
@@ -596,8 +654,9 @@ function applyRegister(d, auto) {
       for (const fl of b.floors) {
         const a = f2(fl.area);
         state.floors.push({
-          bldg: b.name, floor: fl.label, use: fl.use,
-          beforeExcl: a, beforeCommon: "", excl: a, common: "", exclude: !!fl.excludedFromGross,
+          bldg: b.name, floor: fl.label, beforeUse: fl.use, use: fl.use,
+          beforeExcl: a, beforeCommon: "", dExcl: "", dCommon: "", excl: a, common: "",
+          exclude: !!fl.excludedFromGross,
         });
         rows++; floorSum += fl.area || 0;
       }
@@ -608,15 +667,165 @@ function applyRegister(d, auto) {
   // 층별 합이 대장 연면적과 다르면 알린다 — 층별개요 누락·중복 등록이 실제로 있다.
   let check = "";
   if (fillFloors && d.totalGrossFloorArea && Math.abs(floorSum - d.totalGrossFloorArea) > 1)
-    check = ` / ⚠ 층별 합 ${fmt(floorSum)}㎡ ≠ 대장 연면적 ${fmt(d.totalGrossFloorArea)}㎡ — 대장 확인 필요`;
+    check = ` / ⚠ 층별 합 ${fmt(floorSum)}㎡ ≠ 대장 연면적 ${fmt(d.totalGrossFloorArea)}㎡ — 서류 대조 탭 확인`;
 
   const approval = ref.map((b) => b.approvalDate).filter(Boolean)[0] || "";
-  status(`건축물대장 — ${bs.length}개동(${ref[0]?.mainUse || ""}${ref[0]?.structure ? ", " + ref[0].structure : ""})`
+  const msg = `건축물대장 — ${bs.length}개동(${ref[0]?.mainUse || ""}${ref[0]?.structure ? ", " + ref[0].structure : ""})`
     + ` / 건축면적 ${fmt(d.totalBuildingArea)}㎡ · 연면적 ${fmt(d.totalGrossFloorArea)}㎡`
     + (approval ? ` / 사용승인 ${approval}` : "")
-    + (fillFloors ? ` / 면적표 ${rows}행 채움(변경후도 같은 값 — 바뀌는 층만 고치세요)` : " / 면적표는 그대로 둠")
-    + check);
+    + (fillFloors ? ` / 면적표 ${rows}행(변경전) 채움 — 바뀌는 것만 증감(±) 입력` : " / 면적표는 그대로 둠")
+    + check;
+  status(auto ? $("#status").textContent + " / " + msg : msg);
+  renderDocs();
   recalc({ quiet: true });
+}
+
+// ── 서류 대조 탭 ─────────────────────────────────────────────
+// 토지대장 · 토지이용계획(자동조회) ↔ 건축물대장. 숫자가 다르면 검토 전제가 틀린 것이다 — 먼저 본다.
+const USE_ZONES = ["제1종전용주거지역", "제2종전용주거지역", "제1종일반주거지역", "제2종일반주거지역", "제3종일반주거지역",
+  "준주거지역", "중심상업지역", "일반상업지역", "근린상업지역", "유통상업지역", "전용공업지역", "일반공업지역", "준공업지역",
+  "보전녹지지역", "생산녹지지역", "자연녹지지역", "보전관리지역", "생산관리지역", "계획관리지역", "농림지역", "자연환경보전지역"];
+const pickZone = (zs) => {
+  for (const z of zs || []) { const n = z.replace(/\s/g, ""); const hit = USE_ZONES.find((u) => n.includes(u)); if (hit) return hit; }
+  return "";
+};
+const normAddr = (a) => String(a || "").replace(/번지|\s/g, "").replace(/^(.*?[시도])/, "");
+const vClass = (v) => (/불일치|초과|불허/.test(v) ? "v-ng" : /확인|조건/.test(v) ? "v-warn" : "v-ok");
+
+function renderDocs() {
+  const body = $("#docsBody");
+  const D = state.docs;
+  if (!body) return;
+  if (!D) { body.innerHTML = `<tr><td colspan="5" class="empty">설계개요에서 대지위치를 조회하면 표시됩니다.</td></tr>`; return; }
+  const R = D.register;
+  const has = R?.hasBuildings;
+  const b0 = has ? (R.buildings.find((b) => !b.isAnnex) || R.buildings[0]) : null;
+  const rows = [];
+  const add = (item, land, reg, verdict, note) => rows.push({ item, land, reg, verdict, note });
+
+  if (!R) add("건축물대장", "", "", "확인 필요", D.registerError || "조회하지 않았습니다");
+  else if (!has) add("건축물대장", "", "등록된 건축물 없음", "확인", "빈 땅이거나 대장 미등재 — 무허가 건축물이 있으면 별도 확인");
+
+  // 1. 대지위치
+  if (has) {
+    const same = normAddr(D.address) === normAddr(b0.address);
+    add("대지위치", D.address, b0.address, same ? "일치" : "확인 필요",
+      same ? "" : "표기가 다릅니다 — 여러 필지에 걸친 건축물(부속지번)인지 대장 원본 확인");
+  }
+  // 2. 대지면적
+  const regSite = has ? R.siteArea : null;
+  if (D.landArea != null || regSite != null) {
+    const diff = D.landArea != null && regSite != null ? r2(regSite - D.landArea) : null;
+    add("대지면적", D.landArea != null ? `${fmt(D.landArea)} ㎡` : "-", regSite != null ? `${fmt(regSite)} ㎡` : "-",
+      diff == null ? "확인 필요" : Math.abs(diff) < 0.01 ? "일치" : "불일치",
+      diff == null || Math.abs(diff) < 0.01 ? "" : `차이 ${diff > 0 ? "+" : ""}${fmt(diff)}㎡ — 분할·합병·지적정리 또는 건축선 후퇴 여부 확인. 검토는 토지대장 면적 기준`);
+  }
+  // 3. 지목
+  add("지목", D.category || "-", "(대장에 없음)", D.category === "대" ? "확인" : "확인 필요",
+    D.category === "대" ? "" : "지목이 '대'가 아니면 건축 시 형질변경·지목변경 필요 여부 확인");
+  // 4. 용도지역
+  const landZone = pickZone(D.zones);
+  if (has) {
+    const regZone = pickZone(R.zones);
+    add("용도지역", landZone || "-", regZone || (R.zones || []).join(", ") || "-",
+      !regZone ? "확인 필요" : regZone === landZone ? "일치" : "불일치",
+      regZone && regZone !== landZone ? "대장 기재 이후 용도지역이 바뀌었을 수 있습니다 — 검토는 현행 토지이용계획 기준" : "");
+  } else add("용도지역", landZone || "-", "-", landZone ? "확인" : "확인 필요", "");
+  // 5·6. 건폐율·용적률 — 기존 건축물이 현행 기준을 넘으면 증축 불가·기존 부적합
+  const L = D.limits || {};
+  if (has) {
+    const site = D.landArea || regSite;
+    const bc = R.recap?.coverageRatio ?? (R.totalBuildingArea && site ? r2(R.totalBuildingArea / site * 100) : b0.coverageRatio);
+    const far = R.recap?.floorAreaRatio ?? b0.floorAreaRatio;
+    if (bc != null) add("건폐율", L.coverage != null ? `법정 ${L.coverage}% 이하` : "법정 -", `${r2(bc)}%`,
+      L.coverage == null ? "확인 필요" : bc <= L.coverage + 0.005 ? "적합" : "초과",
+      L.coverage != null && bc > L.coverage + 0.005 ? "기존 건축물이 현행 건폐율 초과(기존 부적합) — 증축 불가, 대수선·용도변경은 완화 규정 확인" : "");
+    if (far != null) add("용적률", L.far != null ? `법정 ${L.far}% 이하` : "법정 -", `${r2(far)}%`,
+      L.far == null ? "확인 필요" : far <= L.far + 0.005 ? "적합" : "초과",
+      L.far != null && far > L.far + 0.005 ? "기존 건축물이 현행 용적률 초과(기존 부적합) — 연면적 증가 불가" : "");
+    // 7. 연면적 — 표제부 vs 층별개요 합
+    const floorSum = R.buildings.reduce((s, b) => s + b.floors.reduce((t, f) => t + (f.excludedFromGross ? 0 : f.area || 0), 0), 0);
+    if (R.totalGrossFloorArea) add("연면적", `층별개요 합 ${fmt(floorSum)} ㎡`, `표제부 ${fmt(R.totalGrossFloorArea)} ㎡`,
+      Math.abs(floorSum - R.totalGrossFloorArea) <= 1 ? "일치" : "불일치",
+      Math.abs(floorSum - R.totalGrossFloorArea) <= 1 ? "" : "대장 안에서 표제부와 층별개요가 다릅니다 — 대장 원본 확인");
+    // 8. 주용도
+    // 층별 용도 판정을 모아 가장 나쁜 것으로 (불허 > 확인 필요 > 조건부 허용 > 허용)
+    const js = D.zoneUse?.registerUses || [];
+    const rank = (v) => ({ "불허": 3, "확인 필요": 2, "조건부 허용": 1 }[v] || 0);
+    const worst = js.reduce((w, j) => (rank(j.verdict) > rank(w?.verdict) ? j : w), js[0]);
+    add("대장 용도 · 용도지역", landZone || "-", b0.mainUse || "-", worst ? worst.verdict : "확인 필요",
+      !worst ? "용도지역 규칙을 찾지 못했습니다"
+        : rank(worst.verdict) === 0 ? `층별 용도 ${js.length}종 모두 허용 — 아래 표 참고`
+        : `${worst.use}: ${worst.reason} (${worst.citation}) — 아래 표 참고`);
+    // 9. 사용승인
+    const appr = b0.approvalDate || "";
+    const years = appr ? Math.floor((Date.now() - new Date(appr)) / (365.25 * 864e5)) : null;
+    add("사용승인일", "", appr || "-", appr ? "확인" : "확인 필요",
+      years == null ? "" : `${years}년 경과` + (state.mode === "용도변경" && years >= 5 && (R.totalGrossFloorArea || 0) < 1000
+        ? " — 사용승인 5년 경과·연면적 1천㎡ 미만: 용도변경 시 부설주차장 추가 설치 면제 검토(주차장법 시행령 제6조제4항)" : ""));
+    // 10. 주차
+    const pin = R.buildings.reduce((s, b) => s + (b.parkingIndoor || 0), 0), pout = R.buildings.reduce((s, b) => s + (b.parkingOutdoor || 0), 0);
+    add("주차대수", "", `옥내 ${pin}대 · 옥외 ${pout}대`, "확인", "변경후 법정 대수와 차이는 설계개요 주차 행에서 확인");
+  }
+  // 11. 위반건축물 — 공개 API에 없다
+  add("위반건축물", "", "(API 미제공)", "확인 필요", "정부24·세움터 건축물대장 원본 상단의 '위반건축물' 표기 확인");
+
+  body.innerHTML = rows.map((r) =>
+    `<tr><th>${esc(r.item)}</th><td>${esc(r.land)}</td><td>${esc(r.reg)}</td>` +
+    `<td class="${vClass(r.verdict)}">${esc(r.verdict)}</td><td class="sub">${esc(r.note)}</td></tr>`).join("");
+  renderUseTable();
+}
+
+/// 용도 적합 표: 대장 용도(변경전) + 면적표·설계개요의 변경후 용도.
+let useJudgments = {};   // 변경후 용도 → 판정 (서버에서 받아 둔 것)
+function renderUseTable() {
+  const body = $("#useBody");
+  const D = state.docs;
+  if (!body) return;
+  const z = D?.zoneUse;
+  if (!z) {
+    body.innerHTML = `<tr><td colspan="5" class="empty">용도지역 규칙을 찾지 못했습니다 — 법제처 키와 대지위치 조회를 확인하세요.</td></tr>`;
+    $("#useNote").textContent = "";
+    return;
+  }
+  $("#useNote").textContent = `${z.zone} · ${z.permissive ? "건축할 수 있는 건축물 목록에 있어야 허용" : "건축할 수 없는 건축물 목록에 있으면 불허"} — 근거: ${z.basis}. 지구단위계획이 있으면 그 허용·불허 용도가 우선합니다.`;
+  const row = (kind, j) =>
+    `<tr><th>${kind}</th><td>${esc(j.use)}</td><td class="${vClass(j.verdict)}">${esc(j.verdict)}</td>` +
+    `<td class="sub">${esc(j.citation)}</td><td class="sub">${esc(j.reason)}${j.condition ? "<br>" + esc(j.condition) : ""}</td></tr>`;
+  const regRows = (z.registerUses || []).map((j) => row("대장(변경전)", j));
+  const afterUses = changedAfterUses();
+  const afterRows = afterUses.map((u) => useJudgments[u] ? row("변경후", useJudgments[u])
+    : `<tr><th>변경후</th><td>${esc(u)}</td><td class="v-warn">판정 중…</td><td></td><td></td></tr>`);
+  body.innerHTML = [...regRows, ...afterRows].join("") ||
+    `<tr><td colspan="5" class="empty">판정할 용도가 없습니다.</td></tr>`;
+}
+
+/// 대장에 없는 변경후 용도 (용도변경으로 바뀌는 것 + 설계개요 용도 칸)
+function changedAfterUses() {
+  const regUses = new Set((state.docs?.zoneUse?.registerUses || []).map((j) => j.use));
+  const uses = [...state.floors.map((f) => (f.use || "").trim()), (state.project.primaryUse || "").trim()];
+  return [...new Set(uses.filter((u) => u && !regUses.has(u)))];
+}
+
+let useJudgeTimer = null;
+function scheduleUseJudge() {
+  clearTimeout(useJudgeTimer);
+  useJudgeTimer = setTimeout(judgeAfterUses, 400);
+}
+async function judgeAfterUses() {
+  const D = state.docs;
+  if (!D?.zoneUse) return;
+  const uses = changedAfterUses().filter((u) => !useJudgments[u]);
+  if (uses.length) {
+    try {
+      const r = await (await fetch("/api/zone-use/judge", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ province: D.province, city: D.city, zones: D.zones, uses }),
+      })).json();
+      for (const j of r.judgments || []) useJudgments[j.use] = j;
+    } catch { /* 다음 입력 때 다시 */ }
+  }
+  renderUseTable();
 }
 
 /// 설계개요 표의 특정 칸에 값을 넣는다(사용자 입력 칸도 채워야 하므로 setCalc과 별도).
@@ -651,11 +860,13 @@ $("#modes").addEventListener("click", (e) => {
   state.mode = b.dataset.mode;
   document.body.dataset.mode = state.mode;
   syncAreaHeaders();
+  renderScaleTable();  // 건축면적 변경후 칸이 증감(±) 입력으로 바뀐다
   renderAreaTable();   // 증감 표시가 모드에 따라 달라진다
   recalc();            // 기준 열(계획/변경후)이 바뀌므로 다시 계산한다
   status(`${state.mode} 모드`);
   // 주소 조회를 신축 모드에서 해 뒀다면, 기존 건축물 모드로 바꾸는 순간 대장 값을 채운다.
-  if (state.mode !== "신축" && state.project.pnu && !hasBeforeValues()) loadRegister({ auto: true });
+  if (state.mode !== "신축" && state.docs?.register?.hasBuildings && !hasBeforeValues())
+    applyRegister(state.docs.register, { auto: true });
 });
 
 $("#tabs").addEventListener("click", (e) => {
@@ -664,6 +875,7 @@ $("#tabs").addEventListener("click", (e) => {
   $$(".page").forEach((x) => x.classList.remove("active"));
   b.classList.add("active");
   $("#page-" + b.dataset.page).classList.add("active");
+  if (b.dataset.page === "docs") { renderDocs(); judgeAfterUses(); }
 });
 
 // ── 검토 실행 ────────────────────────────────────────────────
@@ -1019,6 +1231,7 @@ function snapshot() {
     version: 1, savedAt: new Date().toISOString(),
     mode: state.mode, project: state.project, values: state.values,
     floors: state.floors, result: state.result || null, edits: state.edits,
+    docs: state.docs || null,
   };
 }
 
@@ -1030,6 +1243,8 @@ function restore(s) {
   state.floors = s.floors || [];
   state.result = s.result || null;
   state.edits = s.edits || {};
+  state.docs = s.docs || null;
+  useJudgments = {};
   document.body.dataset.mode = state.mode;
   $$(".mode").forEach((b) => b.classList.toggle("active", b.dataset.mode === state.mode));
   renderScaleTable();
@@ -1038,6 +1253,7 @@ function restore(s) {
   stampProject();
   syncAreaHeaders();
   if (state.result) renderResult(state.result);
+  renderDocs();
 }
 
 let autosaveTimer = null;
@@ -1149,7 +1365,8 @@ try {
 (async () => {
   try {
     const s = await (await fetch("/api/settings")).json();
-    const missing = [!s.hasVworld && "VWorld(주소 조회)", !s.hasMoleg && "법제처 OC(조문 조회)"].filter(Boolean);
+    const missing = [!s.hasVworld && "VWorld(주소 조회)", !s.hasMoleg && "법제처 OC(조문 조회)",
+      !s.hasDataGoKr && "공공데이터포털(건축물대장)"].filter(Boolean);
     if (missing.length) status(`설정 필요 — ${missing.join(", ")} 키가 없습니다. 상단 "설정"에서 입력하세요`);
   } catch { /* 호스트가 아직 안 떴으면 조용히 넘어간다 */ }
 })();

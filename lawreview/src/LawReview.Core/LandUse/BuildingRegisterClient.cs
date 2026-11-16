@@ -34,15 +34,27 @@ public sealed class BuildingRegisterClient
     /// <summary>필지의 건축물대장(총괄표제부·표제부·층별개요). 건축물이 없으면 Buildings가 빈 결과.</summary>
     public async Task<BuildingRegister> GetAsync(string pnu, CancellationToken ct = default)
     {
+        // **한 번에 하나씩 부른다.** 동시에 보내면 공공데이터포털이 일부를 빈 결과(totalCount 0)나
+        // 빈 응답으로 돌려준다 — 2026-11-16 실측: 동시 3건 중 2번 실패, 순차 16건 전부 정상(각 50~150ms).
         var query = ParcelQuery(pnu);
-        var recapTask = GetRecapAsync(query, ct);
-        var titleTask = GetItemsAsync("getBrTitleInfo", query, ct);
-        var floorTask = GetItemsAsync("getBrFlrOulnInfo", query, ct);
-        await Task.WhenAll(recapTask, titleTask, floorTask);
+        var titles = await GetItemsAsync("getBrTitleInfo", query, ct);
+        var floorItems = await GetItemsAsync("getBrFlrOulnInfo", query, ct);
+        // 층별개요가 있는데 표제부가 비면 일시 오류다 — 한 번 더 받는다(둘 다 같은 대장에서 나온다).
+        if (titles.Count == 0 && floorItems.Count > 0)
+        {
+            await Task.Delay(300, ct);
+            titles = await GetItemsAsync("getBrTitleInfo", query, ct);
+        }
+        if (floorItems.Count == 0 && titles.Count > 0)
+        {
+            await Task.Delay(300, ct);
+            floorItems = await GetItemsAsync("getBrFlrOulnInfo", query, ct);
+        }
+        var recap = titles.Count > 1 ? await GetRecapAsync(query, ct) : null;
+        var zones = await GetZonesAsync(query, ct);
 
-        var recap = recapTask.Result;
-        var floors = floorTask.Result.Select(ParseFloor).ToList();
-        var buildings = titleTask.Result.Select(ParseTitle)
+        var floors = floorItems.Select(ParseFloor).ToList();
+        var buildings = titles.Select(ParseTitle)
             // 주건축물 먼저, 같은 구분 안에서는 동 이름 순 — 검토서 면적표 순서와 같게
             .OrderBy(b => b.IsAnnex).ThenBy(b => b.DongName, StringComparer.Ordinal)
             .ToList();
@@ -62,7 +74,20 @@ public sealed class BuildingRegisterClient
                 buildings.Add(b);
             }
 
-        return new BuildingRegister(pnu, recap, buildings);
+        return new BuildingRegister(pnu, recap, buildings) { Zones = zones };
+    }
+
+    /// <summary>대장에 기재된 지역·지구·구역 (토지이용계획과 대조용). 실패해도 대장 조회는 살린다.</summary>
+    private async Task<List<string>> GetZonesAsync(string query, CancellationToken ct)
+    {
+        try
+        {
+            return (await GetItemsAsync("getBrJijiguInfo", query, ct))
+                .Select(e => Str(e, "jijiguCdNm") ?? Str(e, "etcJijigu") ?? "")
+                .Where(z => z.Length > 0).Distinct().ToList();
+        }
+        catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException or JsonException or TaskCanceledException)
+        { return new List<string>(); }
     }
 
     /// <summary>PNU → 건축HUB 필지 조회 파라미터.</summary>
@@ -93,17 +118,41 @@ public sealed class BuildingRegisterClient
         for (var page = 1; page <= MaxPages; page++)
         {
             var url = $"{BaseUrl}{op}?serviceKey={key}&{query}&numOfRows={PageSize}&pageNo={page}&_type=json";
-            using var res = await _http.GetAsync(url, ct);
-            var text = await res.Content.ReadAsStringAsync(ct);
-            if (!res.IsSuccessStatusCode && !text.TrimStart().StartsWith('{') && !text.Contains("returnReasonCode"))
-                throw new InvalidOperationException(
-                    $"건축물대장 서버 오류({(int)res.StatusCode}) — 공공데이터포털 쪽 문제입니다. 잠시 뒤 다시 하세요.");
-            var (items, total) = ParsePage(text);
+            var (items, total) = await FetchPageAsync(url, ct);
             all.AddRange(items);
             if (items.Count == 0 || all.Count >= total) break;
         }
         return all;
     }
+
+    /// <summary>
+    /// 한 쪽을 받는다. 빈 응답·서버 오류(503 등)는 일시적인 경우가 많아 두 번까지 다시 받는다.
+    /// 키·한도 오류는 다시 받아도 같으므로 바로 알린다.
+    /// </summary>
+    private async Task<(List<JsonElement> Items, int Total)> FetchPageAsync(string url, CancellationToken ct)
+    {
+        for (var attempt = 0; ; attempt++)
+        {
+            try
+            {
+                using var res = await _http.GetAsync(url, ct);
+                var text = await res.Content.ReadAsStringAsync(ct);
+                if (!res.IsSuccessStatusCode && !text.TrimStart().StartsWith('{') && !text.Contains("returnReasonCode"))
+                    throw new HttpRequestException(
+                        $"건축물대장 서버 오류({(int)res.StatusCode}) — 공공데이터포털 쪽 문제입니다. 잠시 뒤 다시 하세요.");
+                return ParsePage(text);
+            }
+            catch (Exception ex) when (attempt < 2 && !ct.IsCancellationRequested &&
+                                       ex is HttpRequestException or TaskCanceledException or JsonException
+                                       || ex is InvalidOperationException ioe && attempt < 2 && IsTransient(ioe.Message))
+            {
+                await Task.Delay(400 * (attempt + 1), ct);
+            }
+        }
+    }
+
+    private static bool IsTransient(string message) =>
+        !message.Contains("키") && !message.Contains("한도") && !message.Contains("거부");
 
     /// <summary>
     /// 응답 한 쪽을 읽는다. 오류는 사람이 고칠 수 있는 말로 바꿔 던진다 —
@@ -187,7 +236,9 @@ public sealed class BuildingRegisterClient
         BuildingName = Str(e, "bldNm") ?? "",
         IsAnnex = IsAnnexCode(e),
         RegisterKind = Str(e, "regstrKindCdNm") ?? "",
+        Address = Str(e, "platPlc") ?? "",
         MainUse = Str(e, "mainPurpsCdNm") ?? "",
+        MainUseCode = Str(e, "mainPurpsCd") ?? "",
         OtherUse = Str(e, "etcPurps") ?? "",
         Structure = Str(e, "strctCdNm") ?? Str(e, "etcStrct") ?? "",
         Roof = Str(e, "roofCdNm") ?? Str(e, "etcRoof") ?? "",
@@ -230,10 +281,22 @@ public sealed class BuildingRegisterClient
             // 층별 기타용도가 대장 "용도" 칸의 원문이다(예: 제1종근린생활시설(의원)). 주용도코드명은 "의원"뿐이다.
             Use = etc.Length > 0 ? etc : main,
             MainUse = main,
+            MainUseCode = Str(e, "mainPurpsCd") ?? "",
             Structure = Str(e, "strctCdNm") ?? "",
             Area = Num(e, "area") ?? 0,
             ExcludedFromGross = Str(e, "areaExctYn") == "1" || Str(e, "areaExctYn") == "Y",
         };
+    }
+
+    /// <summary>
+    /// 대장 용도코드(5자리) 앞 두 자리 → 「건축법 시행령」 별표 1의 호 번호.
+    /// 01 단독주택 … 03 제1종근린 · 04 제2종근린 … 14 업무시설 … 22 자원순환. 그 뒤(23~)는 코드 체계와
+    /// 별표 번호가 어긋나는 구간이 있어 쓰지 않는다(이름으로 판정).
+    /// </summary>
+    public static string? CategoryNoFromCode(string? code)
+    {
+        if (code is not { Length: >= 2 } || !int.TryParse(code[..2], out var n)) return null;
+        return n is >= 1 and <= 22 ? n.ToString() : null;
     }
 
     private static bool IsAnnexCode(JsonElement e) =>
@@ -269,6 +332,12 @@ public sealed class BuildingRegisterClient
 public sealed record BuildingRegister(string Pnu, RegisterRecap? Recap, List<RegisterBuilding> Buildings)
 {
     public bool HasBuildings => Buildings.Count > 0;
+
+    /// <summary>대장에 기재된 지역·지구·구역 (예: 제2종일반주거지역). 토지이용계획과 대조한다.</summary>
+    public List<string> Zones { get; init; } = new();
+
+    /// <summary>대장 대지면적 (총괄표제부 → 첫 동 표제부).</summary>
+    public double? SiteArea => Recap?.SiteArea is > 0 ? Recap.SiteArea : Buildings.Select(b => b.SiteArea).FirstOrDefault(a => a is > 0);
 
     /// <summary>
     /// 필지 전체 기존 건축면적. 총괄표제부가 있으면 그 값(동 사이 중복 없이 정리된 합계),
@@ -310,7 +379,9 @@ public sealed class RegisterBuilding
     public string BuildingName { get; init; } = "";
     public bool IsAnnex { get; init; }
     public string RegisterKind { get; init; } = "";   // 일반건축물 / 집합건축물
+    public string Address { get; init; } = "";        // 대장 대지위치 (예: 서울특별시 마포구 동교동 153-8번지)
     public string MainUse { get; init; } = "";
+    public string MainUseCode { get; init; } = "";
     public string OtherUse { get; init; } = "";
     public string Structure { get; init; } = "";
     public string Roof { get; init; } = "";
@@ -349,6 +420,7 @@ public sealed class RegisterFloor
     public int Number { get; init; }
     public string Use { get; init; } = "";
     public string MainUse { get; init; } = "";
+    public string MainUseCode { get; init; } = "";
     public string Structure { get; init; } = "";
     public double Area { get; init; }
     public bool ExcludedFromGross { get; init; }

@@ -74,8 +74,15 @@ public static class ApiEndpoints
                 // (지구단위계획이 없어도 검토가 되어야 하므로 — 조례가 기본 기준)
                 var limits = await ResolveZoningLimitsAsync(s, index.Province, index.City, index.Zones);
 
+                // 같은 조회에서 건축물대장과 용도지역 허용·불허 용도까지 — 설계개요가 주소 한 번으로 다 채워져야 한다.
+                var (register, registerError) = await ResolveRegisterAsync(s, index.Pnu);
+                var rules = await ResolveZoneUseAsync(s, index.Province, index.City, index.Zones);
+
                 return Results.Ok(new
                 {
+                    register = register is null ? null : RegisterDto(register),
+                    registerError,
+                    zoneUse = ZoneUseDto(rules, register),
                     ok = true,
                     pnu = index.Pnu,
                     address = index.RefinedAddress,
@@ -127,31 +134,27 @@ public static class ApiEndpoints
                 }
 
                 var reg = await new BuildingRegisterClient(Http, s.DataGoKrApiKey).GetAsync(pnu);
-                return Results.Ok(new
-                {
-                    ok = true,
-                    pnu,
-                    hasBuildings = reg.HasBuildings,
-                    totalBuildingArea = reg.TotalBuildingArea,
-                    totalGrossFloorArea = reg.TotalGrossFloorArea,
-                    recap = reg.Recap,
-                    buildings = reg.Buildings.Select(b => new
-                    {
-                        name = b.DisplayName,
-                        b.IsAnnex, b.RegisterKind, b.MainUse, b.OtherUse, b.Structure,
-                        b.BuildingArea, b.CoverageRatio, b.GrossFloorArea, b.FarFloorArea, b.FloorAreaRatio,
-                        b.Height, b.FloorsAbove, b.FloorsBelow,
-                        b.ParkingIndoor, b.ParkingOutdoor, b.ParkingMechanical,
-                        b.Households, b.Units, b.ApprovalDate, b.PermitDate,
-                        floors = b.Floors.Select(f => new { f.Label, f.Use, f.Area, f.ExcludedFromGross }),
-                    }),
-                });
+                return Results.Ok(new { ok = true, pnu, register = RegisterDto(reg) });
             }
             catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException or JsonException
                                            or TaskCanceledException or ArgumentException)
             {
                 return Results.Ok(new { ok = false, message = ex.Message });
             }
+        });
+
+        // ── 용도 판정 (변경후 용도를 사람이 바꿨을 때 다시 판정) ─────────────
+        app.MapPost("/api/zone-use/judge", async (ZoneUseJudgeDto dto) =>
+        {
+            var s = AppSettings.Load();
+            var rules = await ResolveZoneUseAsync(s, dto.Province ?? "", dto.City ?? "", dto.Zones ?? new List<string>());
+            if (rules is null) return Results.Ok(new { ok = false, message = "용도지역 규칙을 찾지 못했습니다." });
+            return Results.Ok(new
+            {
+                ok = true,
+                judgments = (dto.Uses ?? new List<string>()).Where(u => !string.IsNullOrWhiteSpace(u)).Distinct()
+                    .Select(u => ZoneUseResolver.Judge(rules, u)),
+            });
         });
 
         // ── 설계개요 계산 ────────────────────────────────────────────────
@@ -491,6 +494,121 @@ public static class ApiEndpoints
         return copy;
     }
 
+    /// <summary>건축물대장. 키가 없으면 (null, 안내), 조회 실패면 (null, 오류) — 주소 조회 자체는 살린다.</summary>
+    private static async Task<(BuildingRegister? Register, string? Error)> ResolveRegisterAsync(AppSettings s, string pnu)
+    {
+        if (s.DataGoKrApiKey.Length == 0) return (null, "설정에서 공공데이터포털 키를 넣으면 건축물대장도 함께 채웁니다.");
+        try { return (await new BuildingRegisterClient(Http, s.DataGoKrApiKey).GetAsync(pnu), null); }
+        catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException or JsonException
+                                       or TaskCanceledException or ArgumentException)
+        { return (null, ex.Message); }
+    }
+
+    private static object RegisterDto(BuildingRegister reg) => new
+    {
+        hasBuildings = reg.HasBuildings,
+        totalBuildingArea = reg.TotalBuildingArea,
+        totalGrossFloorArea = reg.TotalGrossFloorArea,
+        siteArea = reg.SiteArea,
+        zones = reg.Zones,
+        recap = reg.Recap,
+        buildings = reg.Buildings.Select(b => new
+        {
+            name = b.DisplayName,
+            b.IsAnnex, b.RegisterKind, b.Address, b.MainUse, b.MainUseCode, b.OtherUse, b.Structure,
+            b.SiteArea, b.BuildingArea, b.CoverageRatio, b.GrossFloorArea, b.FarFloorArea, b.FloorAreaRatio,
+            b.Height, b.FloorsAbove, b.FloorsBelow,
+            b.ParkingIndoor, b.ParkingOutdoor, b.ParkingMechanical,
+            b.Households, b.Units, b.ApprovalDate, b.PermitDate,
+            floors = b.Floors.Select(f => new { f.Label, f.Use, f.MainUseCode, f.Area, f.ExcludedFromGross }),
+        }),
+    };
+
+    /// <summary>
+    /// 허용·불허 용도 요약과 대장 용도별 판정. 대장 층별 용도는 용도코드로 분류를 정한다(이름보다 정확).
+    /// </summary>
+    private static object? ZoneUseDto(ZoneUseRules? rules, BuildingRegister? reg)
+    {
+        if (rules is null) return null;
+        var (allowed, disallowed, basis) = ZoneUseResolver.Summarize(rules);
+        var uses = (reg?.Buildings ?? new List<RegisterBuilding>())
+            // 표제부 주용도는 분류만 있어(예: 제2종근린생활시설) 늘 "조건부"가 된다 — 층별 용도가 있으면 그것으로 판정한다.
+            .SelectMany(b => b.Floors.Count > 0
+                ? b.Floors.Select(f => (f.Use, Code: f.MainUseCode))
+                : new[] { (Use: b.MainUse, Code: b.MainUseCode) })
+            .Where(u => u.Use.Length > 0)
+            .GroupBy(u => u.Use).Select(g => g.First());
+        return new
+        {
+            zone = rules.Zone,
+            permissive = rules.Permissive,
+            allowed, disallowed, basis,
+            ordinanceFound = rules.OrdinanceClauses.Count > 0,
+            registerUses = uses.Select(u =>
+                ZoneUseResolver.Judge(rules, u.Use, BuildingRegisterClient.CategoryNoFromCode(u.Code))),
+        };
+    }
+
+    // 시행령은 지역과 무관하므로 한 번만 받는다. 조례 별표는 (조례, 용도지역)마다 한 번.
+    private static LawText? _decree;
+    private static readonly Dictionary<string, ZoneUseRules?> ZoneRuleCache = new();
+
+    /// <summary>
+    /// 용도지역 허용·불허 용도 규칙: 국토계획법 시행령 별표(제1호·제2호) + 지자체 도시계획 조례 별표.
+    /// 법제처 키가 없거나 실패하면 null (주소 조회는 살린다).
+    /// </summary>
+    private static async Task<ZoneUseRules?> ResolveZoneUseAsync(
+        AppSettings s, string province, string city, IReadOnlyList<string> zones)
+    {
+        var zone = ZoneUseResolver.PickUseZone(zones);
+        if (s.MolegApiKey.Length == 0 || zone is null) return null;
+        var authority = province.Length == 0 ? "" : Municipality.OrdinanceAuthority(province, city);
+        var cacheKey = $"{authority}|{zone}";
+        lock (ZoneRuleCache) if (ZoneRuleCache.TryGetValue(cacheKey, out var cached) && cached is not null) return cached;
+
+        try
+        {
+            var moleg = new MolegClient(Http, s.MolegApiKey);
+            if (_decree is null)
+            {
+                var hits = await moleg.SearchAsync(ZoneUseResolver.DecreeName, LawTarget.Law);
+                var best = ReviewEngine.PickBestMatch(hits, ZoneUseResolver.DecreeName);
+                if (best is null) return null;
+                _decree = await moleg.GetLawTextAsync(best.SerialNo, LawTarget.Law);
+            }
+
+            // 도시계획 조례의 같은 용도지역 별표 (HWP 첨부)
+            string? ordName = null, annexTitle = null;
+            IReadOnlyList<string>? lines = null;
+            if (authority.Length > 0)
+            {
+                var name = $"{authority} 도시계획 조례";
+                var annexes = await moleg.SearchOrdinanceAnnexesAsync(name);
+                var hit = annexes.FirstOrDefault(a =>
+                    ZoneUseResolver.Norm(a.LawName) == ZoneUseResolver.Norm(name)
+                    && ZoneUseResolver.Norm(a.Name).Contains(zone)
+                    && ZoneUseResolver.Norm(a.Name).Contains("건축할수"));
+                if (hit is not null)
+                {
+                    lines = await moleg.DownloadAnnexTextAsync(hit.Link);
+                    if (lines.Count > 0)
+                    {
+                        ordName = hit.LawName;
+                        annexTitle = lines.FirstOrDefault(l => l.Contains("별표")) ?? $"별표 {hit.Number}";
+                    }
+                }
+            }
+
+            var rules = ZoneUseResolver.Build(zone, _decree, ordName, annexTitle, lines);
+            lock (ZoneRuleCache) ZoneRuleCache[cacheKey] = rules;
+            return rules;
+        }
+        catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException or JsonException or TaskCanceledException)
+        {
+            return null;
+        }
+    }
+
     /// <summary>
     /// 지자체 도시계획조례에서 용도지역별 법정 건폐율·용적률을 찾는다.
     /// 법제처 키가 없거나 조회에 실패하면 조용히 빈 결과를 돌려준다(자동조회 자체는 살린다).
@@ -522,6 +640,9 @@ public static class ApiEndpoints
 
 public sealed record SettingsDto(string? MolegApiKey, string? ClaudeApiKey, string? VworldApiKey,
     string? ClaudeModel, string? VworldDomain, string? DataGoKrApiKey = null);
+
+/// <summary>용도 판정 요청 — 화면에서 변경후 용도를 바꿨을 때.</summary>
+public sealed record ZoneUseJudgeDto(string? Province, string? City, List<string>? Zones, List<string>? Uses);
 
 /// <summary>건축물대장 조회 요청. PNU가 있으면 그대로 쓰고, 없으면 주소로 PNU를 찾는다.</summary>
 public sealed record BuildingRegisterDto(string? Pnu, string? Address);
