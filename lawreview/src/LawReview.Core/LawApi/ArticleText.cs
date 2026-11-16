@@ -149,4 +149,91 @@ public static class ArticleText
 
     private static bool LooksLikeUse(string s) =>
         s.EndsWith("시설") || s.EndsWith("식장") || s.EndsWith("주택") || s.EndsWith("건축물");
+
+    // ── 읽기용 정리 ─────────────────────────────────────────────
+    private const string Mok = "가나다라마바사아자차카타파하거너더러머버서어저처커터퍼허";
+    // "…한다." 처럼 문장 끝 "다."를 목(다.)으로 자르지 않도록, 그 앞 글자가 동사·형용사 어간이면 목이 아니다.
+    private const string VerbStems = "한이있된른같는본진하니없렸였았었겠렵된간온은운룬춘든";
+
+    /// <summary>
+    /// 검토서·화면에 싣기 위해 항(①)·호(1.)·목(가.)·세목(1))·(가)) 머리마다 줄을 바꾸고 들여 쓴다.
+    /// 자치법규 본문은 줄바꿈 없는 평문이라 그대로 실으면 한 덩어리 글이 된다(실무 서식 HWP는 줄을 나눈다).
+    ///
+    /// 번호는 **순서대로만** 인정한다 — 호는 1., 2., 3. …, 목은 가., 나., 다. … 순으로 다음 것만 찾는다.
+    /// 그래야 "2026.1.5"의 "1."이나 "…한다."의 "다."를 머리로 잘못 자르지 않는다.
+    /// 이미 줄바꿈된 본문(법령)은 줄 머리를 그대로 두고 들여쓰기만 맞춘다.
+    /// </summary>
+    public static string ForDisplay(string body)
+    {
+        var t = (body ?? "").Replace("\r", "");
+        if (t.Length == 0) return t;
+        var sb = new System.Text.StringBuilder(t.Length + 64);
+        int ho = 1, mok = 0, se = 1, sese = 0;           // 다음에 올 번호
+        var i = 0;
+        while (i < t.Length)
+        {
+            var c = t[i];
+            string? head = null; var indent = 0;
+
+            if (c >= FirstCircled && c <= LastCircled)
+            {
+                head = c.ToString(); indent = 0; ho = 1; mok = 0; se = 1; sese = 0;
+            }
+            else if (IsNumberHead(t, i, ho, '.', out var len))
+            {
+                head = t.Substring(i, len); indent = 1; ho++; mok = 0; se = 1; sese = 0;
+            }
+            else if (mok < Mok.Length && c == Mok[mok] && At(t, i + 1) == '.' && IsBodyStart(t, i + 2)
+                     && !(c == '다' && i > 0 && VerbStems.Contains(t[i - 1])))
+            {
+                head = t.Substring(i, 2); indent = 2; mok++; se = 1; sese = 0;
+            }
+            else if (IsNumberHead(t, i, se, ')', out var len2))
+            {
+                head = t.Substring(i, len2); indent = 3; se++; sese = 0;
+            }
+            else if (sese < Mok.Length && c == Mok[sese] && At(t, i + 1) == ')' && IsBodyStart(t, i + 2)
+                     && (i == 0 || !char.IsLetter(t[i - 1]) || t[i - 1] is '다' or '.' or ' '))
+            {
+                head = t.Substring(i, 2); indent = 4; sese++;
+            }
+
+            if (head is null) { sb.Append(c); i++; continue; }
+
+            // 앞 줄 끝의 공백은 지우고 줄을 바꾼다(맨 처음이면 바꾸지 않는다).
+            while (sb.Length > 0 && sb[^1] == ' ') sb.Length--;
+            if (sb.Length > 0 && sb[^1] != '\n') sb.Append('\n');
+            else if (sb.Length > 0) { /* 이미 줄머리 */ }
+            sb.Append(new string(' ', indent * 2)).Append(head);
+            i += head.Length;
+        }
+        return sb.ToString();
+    }
+
+    private static char At(string t, int i) => i >= 0 && i < t.Length ? t[i] : '\0';
+
+    /// <summary>머리 뒤에 본문이 시작되는지 (공백, 한글, 「, ", ( 등). 숫자·마침표가 오면 머리가 아니다.</summary>
+    private static bool IsBodyStart(string t, int i)
+    {
+        var n = At(t, i);
+        return n == ' ' || n == '「' || n == '“' || n == '"' || n == '(' || n == '[' || (n >= '가' && n <= '힣');
+    }
+
+    /// <summary>
+    /// 기대하는 번호 n 뒤에 마침표(호) 또는 괄호(세목)가 오는 머리인지. 앞 글자가 숫자·마침표·'제'이면
+    /// (날짜 2026.1.5, "제1호" 등) 머리가 아니다.
+    /// </summary>
+    private static bool IsNumberHead(string t, int i, int n, char closer, out int length)
+    {
+        length = 0;
+        var s = n.ToString();
+        if (string.CompareOrdinal(t, i, s, 0, s.Length) != 0) return false;
+        if (At(t, i + s.Length) != closer || !IsBodyStart(t, i + s.Length + 1)) return false;
+        var prev = At(t, i - 1);
+        if (char.IsDigit(prev) || prev == '제' || prev == '·' || prev == ',') return false;
+        if (prev == '.' && char.IsDigit(At(t, i - 2))) return false;   // 날짜 2026.1.5 — "…한다.1." 은 머리다
+        if (closer == ')' && prev == '(') return false;      // "(1)" 같은 괄호 번호는 세목이 아니다
+        length = s.Length + 1;
+        return true;
+    }
 }

@@ -124,4 +124,9 @@ public sealed class ReviewRow
 }
 
 /// <summary>검토서에 인용된 조문. 법제처 API에서 가져온 원문만 담는다.</summary>
-public sealed record CitedArticle(string LawName, string ArticleNo, string Title, string Body, string EffectiveDate);
+public sealed record CitedArticle(string LawName, string ArticleNo, string Title, string Body, string EffectiveDate)
+{
+    /// <summary>화면·검토서용 본문 — 항·호·목마다 줄을 바꾼 것. 판정(AI)에는 원문 Body를 그대로 넘긴다.</summary>
+    public string DisplayBody => System.Text.RegularExpressions.Regex.Replace(
+        ArticleText.ForDisplay(Body), @"^\s*제\d+조(의\d+)?\s*(\([^)\n]*\))?\s*\n?", "");   // 조 제목은 '항목' 칸에 있다
+}

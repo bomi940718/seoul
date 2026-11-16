@@ -165,6 +165,23 @@ public static class ApiEndpoints
             return Results.Ok(new { ok = true, fileName = file.FileName, info });
         });
 
+        // ── 발급 창에서 저장한 PDF 읽기 (앱 데이터 폴더의 docs 안 파일만) ─────────
+        app.MapPost("/api/docs/parse-path", (DocPathDto dto) =>
+        {
+            var docs = Path.GetFullPath(Path.Combine(DataLocation.Root, "docs")) + Path.DirectorySeparatorChar;
+            var full = Path.GetFullPath(dto.Path ?? "");
+            if (!full.StartsWith(docs, StringComparison.OrdinalIgnoreCase) || !File.Exists(full))
+                return Results.Ok(new { ok = false, message = "저장된 서류 파일을 찾지 못했습니다." });
+            var kind = dto.Kind switch
+            {
+                "building" => IssuedDocKind.BuildingRegister,
+                "land" => IssuedDocKind.LandRegister,
+                _ => IssuedDocKind.LandUsePlan,
+            };
+            var info = IssuedDocumentReader.Read(kind, File.ReadAllBytes(full));
+            return Results.Ok(new { ok = true, fileName = Path.GetFileName(full), path = full, info });
+        });
+
         // ── 발급·열람 사이트를 기본 브라우저로 연다 (정해 둔 정부 사이트만) ─────────
         app.MapPost("/api/open-url", (OpenRequest req) =>
         {
@@ -676,6 +693,9 @@ public static class ApiEndpoints
 
 public sealed record SettingsDto(string? MolegApiKey, string? ClaudeApiKey, string? VworldApiKey,
     string? ClaudeModel, string? VworldDomain, string? DataGoKrApiKey = null);
+
+/// <summary>발급 창이 저장한 서류 PDF 경로.</summary>
+public sealed record DocPathDto(string? Kind, string? Path);
 
 /// <summary>용도 판정 요청 — 화면에서 변경후 용도를 바꿨을 때.</summary>
 public sealed record ZoneUseJudgeDto(string? Province, string? City, List<string>? Zones, List<string>? Uses);

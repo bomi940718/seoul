@@ -73,8 +73,13 @@ public sealed class ReviewEngine
                     var matches = keyword.Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
                         .SelectMany(k => lawText.FindArticlesByTitle(k))
                         .DistinctBy(a => a.Number).ToList();
+                    // 본문 검색은 그 낱말이 가장 많이 나오는 조문 하나만 — 정의 조문(서울 제7조)이 잡히고,
+                    // 지나가며 언급만 하는 조문(제9조 회의 등)은 빠진다.
                     if (matches.Count == 0 && basis.ArticleBodyKeyword is string bodyKey)
-                        matches = lawText.Articles.Where(a => a.Body.Contains(bodyKey)).Take(3).ToList();
+                        matches = lawText.Articles
+                            .Select(a => (Art: a, Hits: CountOf(a.Body, bodyKey)))
+                            .Where(x => x.Hits > 0).OrderByDescending(x => x.Hits)
+                            .Take(1).Select(x => x.Art).ToList();
                     if (matches.Count > 0)
                         foreach (var art in matches)
                             row.Citations.Add(new CitedArticle(lawText.Name, art.Number, art.Title, art.Body, lawText.EffectiveDate));
@@ -165,6 +170,13 @@ public sealed class ReviewEngine
 
         Report("검토 완료.");
         return result;
+    }
+
+    private static int CountOf(string text, string word)
+    {
+        int n = 0, i = 0;
+        while ((i = text.IndexOf(word, i, StringComparison.Ordinal)) >= 0) { n++; i += word.Length; }
+        return n;
     }
 
     /// <summary>

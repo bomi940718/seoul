@@ -163,7 +163,7 @@ public static class ReviewJobs
             law = c.LawName,
             article = FormatArticle(c.ArticleNo),
             articleTitle = c.Title,
-            body = c.Body,
+            body = c.DisplayBody,
             effectiveDate = FormatDate(c.EffectiveDate),
         }),
     };

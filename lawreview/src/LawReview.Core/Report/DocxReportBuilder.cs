@@ -214,7 +214,7 @@ public sealed class DocxReportBuilder
                         (FormatArticleRef(c.ArticleNo) is { Length: > 0 } artRef
                             ? $"{c.LawName} {artRef}({c.Title})" : $"{c.LawName} {c.Title}") +
                             (c.EffectiveDate.Length > 0 ? $" [시행 {FormatDate(c.EffectiveDate)}]" : "") +
-                            $"\n{c.Body}",
+                            $"\n{c.DisplayBody}",
                         first ? row.Applicability.ToString() : "",
                         first ? row.Reason ?? "" : "",
                     });

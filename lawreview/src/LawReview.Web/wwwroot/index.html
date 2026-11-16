@@ -142,18 +142,18 @@
     <div class="sheet">
       <h2 class="sheet-title">■ 서류 — 건축물대장 · 토지대장 · 토지이용계획확인원</h2>
       <p class="hint-inline">공개 API에 없는 항목(소유자 성명·주민번호 앞자리, 위반건축물 표기, 건축물대장 지목)은 발급본 PDF에서 읽습니다.
-        ① 사이트에서 발급·열람 → PDF로 저장 ② 'PDF 넣기'로 불러오면 아래 대조표에 바로 반영됩니다.</p>
+        '발급 창 열기' → 정부24(토지이음)가 앱 안에서 열립니다. 로그인·발급은 직접 하시고, 서류가 화면에 뜨면 창 위 '이 화면을 PDF로 저장'을 누르면 저장과 동시에 아래 대조표에 반영됩니다. 이미 받은 PDF는 'PDF 넣기'로 불러옵니다.</p>
       <div class="doc-cards">
         <div class="doc-card" data-kind="building"><b>건축물대장</b>
-          <div class="doc-actions"><button class="btn sm ghost" data-open="building">정부24 발급</button>
+          <div class="doc-actions"><button class="btn sm ghost" data-open="building">발급 창 열기</button>
             <label class="btn sm">PDF 넣기<input type="file" accept="application/pdf" hidden></label></div>
           <div class="doc-status sub">PDF 없음</div></div>
         <div class="doc-card" data-kind="land"><b>토지대장</b>
-          <div class="doc-actions"><button class="btn sm ghost" data-open="land">정부24 발급</button>
+          <div class="doc-actions"><button class="btn sm ghost" data-open="land">발급 창 열기</button>
             <label class="btn sm">PDF 넣기<input type="file" accept="application/pdf" hidden></label></div>
           <div class="doc-status sub">PDF 없음</div></div>
         <div class="doc-card" data-kind="plan"><b>토지이용계획확인원</b>
-          <div class="doc-actions"><button class="btn sm ghost" data-open="plan">토지이음 열람</button>
+          <div class="doc-actions"><button class="btn sm ghost" data-open="plan">열람 창 열기</button>
             <label class="btn sm">PDF 넣기<input type="file" accept="application/pdf" hidden></label></div>
           <div class="doc-status sub">PDF 없음</div></div>
       </div>
@@ -191,8 +191,8 @@
         <span class="hint-inline">판정·사유·기준은 직접 고칠 수 있습니다. 고친 값이 검토서에 나갑니다 (↺ 되돌리기)</span>
       </div>
       <table class="doc"><thead><tr>
-        <th style="width:150px">법 규 명 및 조 항</th><th style="width:200px">대 상</th>
-        <th style="width:170px">법 적 기 준</th><th>설 계 기 준(산정식)</th><th style="width:150px">비 고</th>
+        <th style="width:120px">법 규 명 및 조 항</th><th style="width:150px">대 상</th>
+        <th style="width:31%">법 적 기 준</th><th>설 계 기 준(산정식)</th><th style="width:96px">비 고</th>
       </tr></thead><tbody id="summaryBody"><tr><td colspan="5" class="empty">검토를 실행하세요.</td></tr></tbody></table>
     </div>
   </section>
@@ -204,8 +204,8 @@
         <span class="hint-inline">판정·사유는 직접 고칠 수 있습니다 (↺ 되돌리기)</span>
       </div>
       <table class="doc"><thead><tr>
-        <th style="width:150px">법 규 명 및 조 항</th><th style="width:200px">대 상</th>
-        <th style="width:170px">법 적 기 준</th><th>설 계 기 준(산정식)</th><th style="width:150px">비 고</th>
+        <th style="width:120px">법 규 명 및 조 항</th><th style="width:150px">대 상</th>
+        <th style="width:31%">법 적 기 준</th><th>설 계 기 준(산정식)</th><th style="width:96px">비 고</th>
       </tr></thead><tbody id="certBody"><tr><td colspan="5" class="empty">검토를 실행하세요.</td></tr></tbody></table>
     </div>
   </section>
@@ -213,8 +213,8 @@
   <section class="page" id="page-district">
     <div class="sheet">
       <h2 class="sheet-title">■ 건축허가 관련 지구단위계획 지침</h2>
-      <table class="doc"><thead><tr>
-        <th style="width:160px">구 분</th><th style="width:220px">항 목</th><th>내 용</th><th style="width:150px">적용여부</th>
+      <table class="doc detail"><thead><tr>
+        <th style="width:140px">구 분</th><th style="width:190px">항 목</th><th>내 용</th><th style="width:150px">적용여부</th>
       </tr></thead><tbody id="districtBody"><tr><td colspan="4" class="empty">검토를 실행하세요.</td></tr></tbody></table>
     </div>
   </section>
@@ -222,8 +222,8 @@
   <section class="page" id="page-site">
     <div class="sheet">
       <h2 class="sheet-title">■ 해당 지번 관련 주요 법규</h2>
-      <table class="doc"><thead><tr>
-        <th style="width:160px">구 분</th><th style="width:220px">항 목</th><th>내 용</th><th style="width:150px">적용여부</th>
+      <table class="doc detail"><thead><tr>
+        <th style="width:140px">구 분</th><th style="width:190px">항 목</th><th>내 용</th><th style="width:150px">적용여부</th>
       </tr></thead><tbody id="siteBody"><tr><td colspan="4" class="empty">검토를 실행하세요.</td></tr></tbody></table>
     </div>
   </section>

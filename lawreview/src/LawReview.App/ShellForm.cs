@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.WinForms;
 
@@ -41,6 +42,16 @@ public sealed class ShellForm : Form
             await view.EnsureCoreWebView2Async();
             view.CoreWebView2.Settings.AreDefaultContextMenusEnabled = true;
             view.CoreWebView2.Settings.IsStatusBarEnabled = false;
+            // 화면의 '발급 창 열기' → 앱 안의 서류 발급 창. 저장한 PDF 경로를 화면에 돌려준다.
+            view.CoreWebView2.WebMessageReceived += async (_, e) =>
+            {
+                if (DocWindow.ParseOpenRequest(e.WebMessageAsJson) is not { } req) return;
+                var win = new DocWindow(req.Kind, req.Label, (kind, path) =>
+                    BeginInvoke(async () => await view.CoreWebView2.ExecuteScriptAsync(
+                        $"window.onDocSaved && window.onDocSaved({JsonSerializer.Serialize(kind)}, {JsonSerializer.Serialize(path)})")));
+                win.Show(this);
+                await win.InitAsync(req.Url);
+            };
             view.Source = new Uri(_url);
         }
         catch (Exception ex)

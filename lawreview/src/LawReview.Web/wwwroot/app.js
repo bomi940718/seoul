@@ -157,10 +157,10 @@ function refreshDeltas(o) {
   const h = state.values.height || {};
   setCalc("height", "deltaCalc", num(h.before) && num(h.after) ? sgn(num(h.after) - num(h.before), "m") : "");
   const add = o?.change?.additionalParkingSpaces;
-  setCalc("parkingAll", "deltaCalc", add == null ? "" : add > 0 ? `추가 ${add} 대` : "추가 없음");
-  const pa = document.querySelector('.cell[data-key="parkingAll"][data-slot="deltaCalc"]');
-  if (pa) pa.title = (o?.change?.additionalParking || "") +
-    " — 변경후 법정 대수 − 변경전 법정 대수 (주차장법 시행령 제6조제4항, 증가분만 추가 확보)";
+  // 산정식을 칸 안에 바로 보인다(마우스 올리기 없이): "추가 없음 / (변경후 2대 − 변경전 2대)"
+  const m = /변경후\s*(\d+)\s*대\s*-\s*변경전\s*(\d+)\s*대/.exec(o?.change?.additionalParking || "");
+  setCalc("parkingAll", "deltaCalc", add == null ? ""
+    : (add > 0 ? `추가 ${add} 대` : "추가 없음") + (m ? `\n(변경후 ${m[1]}대 − 변경전 ${m[2]}대)` : ""));
 }
 
 /// 엔진이 채우는 표시 전용 영역 (사람이 못 고치므로 입력을 덮어쓸 일이 없다)
@@ -494,15 +494,17 @@ function ecoRatio() {
 
 /// 주차 행 근거 법규 — 법제처 원문으로 확인한 조항(2026-11-16). 사람이 고친 근거는 덮지 않는다.
 const PARKING_BASIS = {
-  parkingDis: "장애인ㆍ노인ㆍ임산부 등의 편의증진 보장에 관한 법률 시행령 별표 2 (부설주차장 10대 이상, 비율은 지자체 주차장 조례)",
-  parkingExt: "주차장법 시행규칙 제11조제4항 (50대 이상 — 제6조제1항제14호 준용, 30% 이상)",
-  parkingEco: "환경친화적 자동차의 개발 및 보급 촉진에 관한 법률 시행령 제18조의5·제18조의6 (50대 이상, 5% 이상·기축 2% 이상, 시·도 조례)",
+  parkingDis: "장애인ㆍ노인ㆍ임산부 등의 편의증진 보장에 관한 법률 시행령 [별표 2]",
+  parkingExt: "주차장법 시행규칙 제11조제4항",
+  parkingEco: "환경친화적 자동차의 개발 및 보급 촉진에 관한 법률 시행령 제18조의6",
 };
 function applyParkingBasis() {
   const prev = state.project.autoParkingBasis || {};
+  // 11-16 첫 배포의 긴 자동 근거(조건까지 적은 것)도 자동값으로 보고 바꾼다
+  const isOldAuto = (v) => v.includes("(부설주차장 10대 이상") || v.includes("(50대 이상");
   for (const [k, v] of Object.entries(PARKING_BASIS)) {
     const cur = String(state.values[k]?.basis || "").trim();
-    if (!cur || cur === prev[k]) setCell(k, "basis", v);
+    if (!cur || cur === prev[k] || isOldAuto(cur)) setCell(k, "basis", v);
   }
   // 전체 행은 부설주차장 설치기준(시행령 별표 1 · 조례)을 그대로 따른다
   const out = String(state.values.parkingOut?.basis || "").trim();
@@ -926,15 +928,40 @@ function renderDocCards() {
   }
 }
 
+const DOC_LABEL = { building: "건축물대장", land: "토지대장", plan: "토지이용계획확인원" };
+
+// 발급 창: 앱(exe) 안에서는 정부24·토지이음을 앱 창으로 연다 — 로그인·발급은 직접, 서류가 뜨면
+// 창 위 [이 화면을 PDF로 저장]을 누르면 저장과 동시에 아래 대조표에 반영된다(window.onDocSaved).
+// 브라우저로 쓰는 경우(개발 화면 등)에는 기본 브라우저로 열고 'PDF 넣기'로 불러온다.
 for (const btn of $$("[data-open]")) {
   btn.addEventListener("click", async () => {
+    const kind = btn.dataset.open, url = DOC_SITE[kind]();
+    if (!state.docs) { status("먼저 설계개요에서 대지위치를 조회하세요"); return; }
+    if (window.chrome?.webview) {
+      window.chrome.webview.postMessage({ type: "openDoc", kind, label: DOC_LABEL[kind], url });
+      status(`${DOC_LABEL[kind]} 발급 창을 열었습니다 — 로그인·발급 후 서류가 보이면 창 위 '이 화면을 PDF로 저장'을 누르세요`);
+      return;
+    }
     const r = await (await fetch("/api/open-url", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ path: DOC_SITE[btn.dataset.open]() }),
+      body: JSON.stringify({ path: url }),
     })).json();
     status(r.ok ? "브라우저에서 열었습니다 — 발급·열람 후 PDF로 저장해 'PDF 넣기'로 불러오세요" : r.message);
   });
 }
+
+/// 발급 창에서 PDF를 저장하면 앱이 부른다.
+window.onDocSaved = async (kind, path) => {
+  if (!state.docs) return;
+  const r = await (await fetch("/api/docs/parse-path", {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind, path }),
+  })).json();
+  if (!r.ok) { status(r.message); return; }
+  (state.docs.pdf ||= {})[kind] = { fileName: r.fileName, path: r.path, info: r.info };
+  renderDocs();
+  autosave();
+  status(`${DOC_LABEL[kind]} PDF 저장·반영 — ${r.path}`);
+};
 
 for (const card of $$(".doc-card")) {
   const input = card.querySelector("input[type=file]");
@@ -1368,11 +1395,20 @@ function renderDetails(details) {
   }
 }
 
-const detailRows = (x) => `<tr class="${isEdited(x.id) ? "row-edited" : ""}">
-  <td class="body-cell">${esc(x.title)}</td>
-  <td class="body-cell sub">${x.citations.map((c) => esc(c.law + " " + c.article)).join("<br>")}</td>
-  <td class="body-cell">${citeHtml(x)}</td>
-  <td class="center verdict-cell">${verdictHtml(x)}</td></tr>`;
+/// 지구단위계획·해당 지번 표: 인용 조문마다 한 행(항목 = 법령명 + 조문, 내용 = 항·호·목별로 줄을 나눈 본문).
+/// 구분과 적용여부(판정·사유)는 항목 단위로 한 칸에 묶는다. 실무 서식(HWP)과 같은 모양이다.
+const detailRows = (x) => {
+  const cites = x.citations?.length ? x.citations : [null];
+  const edited = isEdited(x.id) ? " row-edited" : "";
+  return cites.map((c, i) => `<tr class="${i === 0 ? "item-start" : "cite-row"}${edited}">
+    ${i === 0 ? `<td class="body-cell item-name" rowspan="${cites.length}">${esc(x.title)}</td>` : ""}
+    <td class="body-cell law-name">${c ? esc(c.law) + "<br>" + esc(c.article) + (c.articleTitle ? "(" + esc(c.articleTitle) + ")" : "") : "-"}
+      ${c?.effectiveDate ? `<div class="sub">[시행 ${esc(c.effectiveDate)}]</div>` : ""}</td>
+    <td class="body-cell"><div class="cite-body">${c ? esc(c.body) : ""}</div></td>
+    ${i === 0 ? `<td class="center verdict-cell" rowspan="${cites.length}">${verdictHtml(x)}
+        ${editCell(x, "reason", { cls: "reason-edit", ph: "판정 사유" })}</td>` : ""}
+  </tr>`).join("");
+};
 
 /// 인용 조문은 법제처 원문이라 읽기 전용이고, 그 아래 판정 사유만 고칠 수 있다.
 function citeHtml(x) {
