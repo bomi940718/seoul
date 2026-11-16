@@ -32,8 +32,36 @@ public sealed class AppSettings
 
     public static AppSettings Load()
     {
-        if (!File.Exists(FilePath)) return new AppSettings();
-        return Parse(File.ReadAllText(FilePath));
+        var s = File.Exists(FilePath) ? Parse(File.ReadAllText(FilePath)) : new AppSettings();
+        return WithBundledDefaults(s, Bundled.Value);
+    }
+
+    /// <summary>
+    /// 공유용 exe(소우주 배포, build-share.bat)에 함께 묶인 키. 일반 빌드에는 없다(null).
+    /// 사용자가 받자마자 쓸 수 있게 하려는 것 — 2026-11-17 사용자 결정("NAS 설치 파일엔 내가 쓰던 키를 그대로").
+    /// 키 원본은 저장소 밖(%USERPROFILE%\.lawreview\share-keys.json)에 있고 저장소에는 절대 들어가지 않는다.
+    /// </summary>
+    private static readonly Lazy<AppSettings?> Bundled = new(() =>
+    {
+        using var stream = typeof(AppSettings).Assembly.GetManifestResourceStream("bundled-settings.json");
+        if (stream is null) return null;
+        using var reader = new StreamReader(stream);
+        return Parse(reader.ReadToEnd());
+    });
+
+    /// <summary>비어 있는 키만 묶인 키로 채운다 — 사람이 직접 넣은 키가 이긴다.</summary>
+    internal static AppSettings WithBundledDefaults(AppSettings s, AppSettings? bundled)
+    {
+        if (bundled is null) return s;
+        if (s.MolegApiKey.Length == 0) s.MolegApiKey = bundled.MolegApiKey;
+        if (s.ClaudeApiKey.Length == 0) s.ClaudeApiKey = bundled.ClaudeApiKey;
+        if (s.VworldApiKey.Length == 0)
+        {
+            s.VworldApiKey = bundled.VworldApiKey;
+            s.VworldDomain = bundled.VworldDomain;   // VWorld 키는 등록한 서비스 URL과 짝이다
+        }
+        if (s.DataGoKrApiKey.Length == 0) s.DataGoKrApiKey = bundled.DataGoKrApiKey;
+        return s;
     }
 
     internal static AppSettings Parse(string json)

@@ -17,6 +17,11 @@
     <EmbeddedResource Include="checklists\standard.json" />
   </ItemGroup>
 
+  <!-- 공유용 빌드(build-share.bat)만: 저장소 밖의 키 파일을 exe에 함께 묶는다. 일반 빌드에는 들어가지 않는다. -->
+  <ItemGroup Condition="'$(BundledSettings)' != ''">
+    <EmbeddedResource Include="$(BundledSettings)" LogicalName="bundled-settings.json" />
+  </ItemGroup>
+
   <ItemGroup>
     <InternalsVisibleTo Include="LawReview.Core.Tests" />
   </ItemGroup>

@@ -24,6 +24,25 @@ public class AppSettingsTests
     }
 
     [Fact]
+    public void 공유용_exe의_묶인_키는_비어_있는_칸만_채운다()
+    {
+        // 소우주 배포 exe: 받자마자 쓰게 키를 묶어 두되, 그쪽에서 자기 키를 넣으면 그 키가 이긴다.
+        var bundled = new AppSettings
+        {
+            MolegApiKey = "oc", ClaudeApiKey = "ck", VworldApiKey = "vk", VworldDomain = "http://localhost", DataGoKrApiKey = "dk",
+        };
+        var fresh = AppSettings.WithBundledDefaults(new AppSettings(), bundled);
+        Assert.Equal(("oc", "ck", "vk", "dk"), (fresh.MolegApiKey, fresh.ClaudeApiKey, fresh.VworldApiKey, fresh.DataGoKrApiKey));
+
+        var own = AppSettings.WithBundledDefaults(new AppSettings { ClaudeApiKey = "mine" }, bundled);
+        Assert.Equal("mine", own.ClaudeApiKey);
+        Assert.Equal("oc", own.MolegApiKey);
+
+        // 일반 빌드(묶인 키 없음)는 그대로
+        Assert.Equal("", AppSettings.WithBundledDefaults(new AppSettings(), null).ClaudeApiKey);
+    }
+
+    [Fact]
     public void 모델이_없거나_파일이_깨졌으면_기본값()
     {
         Assert.Equal(AppSettings.DefaultClaudeModel, AppSettings.Parse("{}").ClaudeModel);

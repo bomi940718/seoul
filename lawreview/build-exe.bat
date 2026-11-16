@@ -37,7 +37,7 @@ copy /Y "%PUB%" "%DIST%\LawReview.App.exe" >nul || goto :locked
 echo.
 echo 완료: %PUB%
 if not "%DIST%"=="-" echo 배포본: %DIST%\LawReview.App.exe
-echo 이 exe 파일 하나만 협력체에 전달하세요. (API 키는 각자 설정에서 입력)
+echo 이 exe는 내 PC용입니다(키 없음). 소우주 공유용은 build-share.bat — 키를 묶어 NAS에 exe 하나만 둡니다.
 exit /b 0
 
 :locked
