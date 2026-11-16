@@ -35,6 +35,7 @@ public static class ApiEndpoints
                 hasMoleg = s.MolegApiKey.Length > 0,
                 hasClaude = s.ClaudeApiKey.Length > 0,
                 hasVworld = s.VworldApiKey.Length > 0,
+                hasDataGoKr = s.DataGoKrApiKey.Length > 0,
                 claudeModel = s.ClaudeModel,
                 vworldDomain = s.VworldDomain,
             });
@@ -46,6 +47,7 @@ public static class ApiEndpoints
             if (dto.MolegApiKey is not null) s.MolegApiKey = dto.MolegApiKey.Trim();
             if (dto.ClaudeApiKey is not null) s.ClaudeApiKey = dto.ClaudeApiKey.Trim();
             if (dto.VworldApiKey is not null) s.VworldApiKey = dto.VworldApiKey.Trim();
+            if (dto.DataGoKrApiKey is not null) s.DataGoKrApiKey = dto.DataGoKrApiKey.Trim();
             if (!string.IsNullOrWhiteSpace(dto.ClaudeModel)) s.ClaudeModel = dto.ClaudeModel.Trim();
             if (!string.IsNullOrWhiteSpace(dto.VworldDomain)) s.VworldDomain = dto.VworldDomain.Trim();
             s.Save();
@@ -97,6 +99,56 @@ public static class ApiEndpoints
                 });
             }
             catch (Exception ex)
+            {
+                return Results.Ok(new { ok = false, message = ex.Message });
+            }
+        });
+
+        // ── 건축물대장 (기존 건축물 = 변경전 값) ─────────────────────────
+        app.MapPost("/api/building-register", async (BuildingRegisterDto dto) =>
+        {
+            var s = AppSettings.Load();
+            if (s.DataGoKrApiKey.Length == 0)
+                return Results.Ok(new { ok = false, message = "설정에서 공공데이터포털 키(건축물대장)를 먼저 입력하세요." });
+
+            try
+            {
+                var pnu = dto.Pnu?.Trim() ?? "";
+                if (pnu.Length != 19)
+                {
+                    if (s.VworldApiKey.Length == 0)
+                        return Results.Ok(new { ok = false, message = "설정에서 VWorld 키를 먼저 입력하세요(주소 → 필지번호)." });
+                    if (string.IsNullOrWhiteSpace(dto.Address))
+                        return Results.Ok(new { ok = false, message = "대지위치를 입력하세요." });
+                    var found = await new VworldClient(Http, s.VworldApiKey, s.VworldDomain).AddressToPnuAsync(dto.Address.Trim());
+                    if (found is null)
+                        return Results.Ok(new { ok = false, message = "주소로 필지를 찾지 못했습니다. 주소 표기를 확인하세요." });
+                    pnu = found.Pnu;
+                }
+
+                var reg = await new BuildingRegisterClient(Http, s.DataGoKrApiKey).GetAsync(pnu);
+                return Results.Ok(new
+                {
+                    ok = true,
+                    pnu,
+                    hasBuildings = reg.HasBuildings,
+                    totalBuildingArea = reg.TotalBuildingArea,
+                    totalGrossFloorArea = reg.TotalGrossFloorArea,
+                    recap = reg.Recap,
+                    buildings = reg.Buildings.Select(b => new
+                    {
+                        name = b.DisplayName,
+                        b.IsAnnex, b.RegisterKind, b.MainUse, b.OtherUse, b.Structure,
+                        b.BuildingArea, b.CoverageRatio, b.GrossFloorArea, b.FarFloorArea, b.FloorAreaRatio,
+                        b.Height, b.FloorsAbove, b.FloorsBelow,
+                        b.ParkingIndoor, b.ParkingOutdoor, b.ParkingMechanical,
+                        b.Households, b.Units, b.ApprovalDate, b.PermitDate,
+                        floors = b.Floors.Select(f => new { f.Label, f.Use, f.Area, f.ExcludedFromGross }),
+                    }),
+                });
+            }
+            catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException or JsonException
+                                           or TaskCanceledException or ArgumentException)
             {
                 return Results.Ok(new { ok = false, message = ex.Message });
             }
@@ -469,7 +521,10 @@ public static class ApiEndpoints
 }
 
 public sealed record SettingsDto(string? MolegApiKey, string? ClaudeApiKey, string? VworldApiKey,
-    string? ClaudeModel, string? VworldDomain);
+    string? ClaudeModel, string? VworldDomain, string? DataGoKrApiKey = null);
+
+/// <summary>건축물대장 조회 요청. PNU가 있으면 그대로 쓰고, 없으면 주소로 PNU를 찾는다.</summary>
+public sealed record BuildingRegisterDto(string? Pnu, string? Address);
 
 public sealed record LookupDto(string? Address, string? PrimaryUse);
 

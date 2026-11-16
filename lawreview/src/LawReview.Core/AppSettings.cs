@@ -13,6 +13,8 @@ public sealed class AppSettings
     public string ClaudeModel { get; set; } = DefaultClaudeModel;
     public string VworldApiKey { get; set; } = "";     // VWorld 키 (www.vworld.kr, 무료) — 용도지역 자동조회
     public string VworldDomain { get; set; } = "http://localhost";  // VWorld 키 발급 시 등록한 서비스 URL
+    /// <summary>공공데이터포털 일반 인증키 (data.go.kr, 무료) — 건축물대장(건축HUB) 조회. 계정당 하나.</summary>
+    public string DataGoKrApiKey { get; set; } = "";
 
     /// <summary>판정에 쓰는 Claude 모델의 기본값.</summary>
     public const string DefaultClaudeModel = "claude-sonnet-5-5";

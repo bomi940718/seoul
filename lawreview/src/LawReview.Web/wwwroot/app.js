@@ -502,9 +502,121 @@ function applyLookup(d, inputAddress) {
   // 입력한 주소와 바뀐 지번 주소 둘 다 "조회한 주소"로 기록한다 — 칸이 지번으로 바뀐 뒤
   // 포커스가 빠질 때 같은 땅을 또 조회하지 않게.
   state.project.lookedUpAddress = d.address;
+  state.project.pnu = d.pnu;
   state.lastLookupInput = inputAddress;
   status(`자동조회 완료 — ${d.province} ${d.city} / 지목 ${d.category || "-"} / ${d.zones.length}개 지역·지구${addrNote}${limitNote}${parkNote}`);
   recalc({ quiet: true });   // 완료 메시지를 "계산 갱신됨"으로 덮지 않는다
+
+  // 기존 건축물이 있는 공사면 대장 값(변경전)이 출발점이다 — 비어 있을 때만 이어서 불러온다.
+  if (state.mode !== "신축" && !hasBeforeValues()) loadRegister({ auto: true });
+}
+
+// ── 건축물대장 (변경전 값) ───────────────────────────────────
+// 리모델링·증축·용도변경은 기존 건축물 값이 출발점이다. 대장(공공데이터포털 건축HUB)에서
+// 건축면적·규모·높이·주차와 층별 면적을 가져와 **변경전 열**에 채운다.
+// 면적표는 변경후도 같은 값으로 채운다 — 리모델링은 대부분 그대로이고, 바뀌는 층만 고치면 된다.
+$("#btnRegister").addEventListener("click", () => loadRegister({ auto: false }));
+
+const hasBeforeValues = () =>
+  num(state.values.buildingArea?.before) > 0 || state.floors.some((f) => num(f.beforeExcl) || num(f.beforeCommon));
+const floorsHaveData = () =>
+  state.floors.some((f) => f.floor || f.use || num(f.excl) || num(f.common) || num(f.beforeExcl) || num(f.beforeCommon));
+
+let registerBusy = false;
+async function loadRegister({ auto }) {
+  const address = (state.project.siteAddress || "").trim();
+  if (registerBusy) return;
+  if (!address && !state.project.pnu) { status("대지위치를 먼저 입력하세요"); return; }
+
+  registerBusy = true;
+  const btn = $("#btnRegister");
+  btn.disabled = true; btn.textContent = "대장 조회 중…";
+  if (!auto) status(`건축물대장 조회 중… (${address})`);
+  try {
+    // 주소 칸이 조회 뒤 바뀌었으면 저장된 PNU는 다른 땅이다 — 주소로 다시 찾게 한다.
+    const pnu = address === state.project.lookedUpAddress ? state.project.pnu : null;
+    const r = await fetch("/api/building-register", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ pnu, address }),
+    });
+    applyRegister(await r.json(), auto);
+  } catch (e) {
+    status("건축물대장 조회 실패: 화면 호스트와 연결되지 않았습니다 — " + e.message);
+  } finally {
+    registerBusy = false;
+    btn.disabled = false; btn.textContent = "건축물대장";
+  }
+}
+
+function applyRegister(d, auto) {
+  if (!d.ok) {
+    if (/키/.test(d.message || "") && !auto) openSettings(d.message);
+    const prev = auto ? $("#status").textContent + " / " : "";
+    status(prev + "건축물대장: " + d.message);
+    return;
+  }
+  if (d.pnu) state.project.pnu = d.pnu;
+  if (!d.hasBuildings) {
+    status((auto ? $("#status").textContent + " / " : "") + "건축물대장에 등록된 건축물이 없습니다(빈 땅이거나 미등재)");
+    return;
+  }
+
+  const bs = d.buildings;
+  const mains = bs.filter((b) => !b.isAnnex);
+  const ref = mains.length ? mains : bs;
+  const f2 = (v) => (v == null ? "" : Number(v).toFixed(2));
+  const sum = (xs) => xs.reduce((s, x) => s + (x || 0), 0);
+
+  // 면적표에 이미 사람이 넣은 값이 있으면 묻고 덮는다.
+  const fillFloors = !floorsHaveData() ||
+    (!auto && confirm("각 층별 면적표에 이미 값이 있습니다.\n건축물대장 층별 면적으로 다시 채울까요?\n(취소하면 설계개요 변경전 칸만 채웁니다)"));
+
+  // 설계개요 변경전 열
+  setCell("buildingArea", "before", f2(d.totalBuildingArea));
+  const above = Math.max(...ref.map((b) => b.floorsAbove || 0));
+  const below = Math.max(...ref.map((b) => b.floorsBelow || 0));
+  setCell("scale", "before", [below ? `지하 ${below}층` : "", above ? `지상 ${above}층` : ""].filter(Boolean).join(", ")
+    + (bs.length > 1 ? ` (${bs.length}개동)` : ""));
+  const heights = ref.map((b) => b.height).filter((h) => h > 0);
+  if (heights.length) setCell("height", "before", f2(Math.max(...heights)));
+  const pin = sum(bs.map((b) => b.parkingIndoor)), pout = sum(bs.map((b) => b.parkingOutdoor));
+  const pmech = sum(bs.map((b) => b.parkingMechanical));
+  setCell("parkingType", "before", `${pmech ? "자주식+기계식" : "자주식"} (대장: 옥내 ${pin}대, 옥외 ${pout}대)`);
+  setCell("parkingIn", "before", `${pin} 대`);
+  if (!state.project.primaryUse && ref[0]?.mainUse) setField("primaryUse", ref[0].mainUse);
+  // 변경후가 비어 있으면 변경전과 같게 둔다(리모델링은 대부분 그대로) — 바뀌는 값만 고치면 된다.
+  for (const k of ["buildingArea", "scale", "height"])
+    if (!String(state.values[k]?.after || "").trim() && state.values[k]?.before) setCell(k, "after", state.values[k].before);
+
+  // 각 층별 면적표 — 대장의 층별개요를 아래층부터. 동이 하나면 동 이름은 대장 표기 그대로.
+  let rows = 0, floorSum = 0;
+  if (fillFloors) {
+    state.floors = [];
+    for (const b of bs) {
+      for (const fl of b.floors) {
+        const a = f2(fl.area);
+        state.floors.push({
+          bldg: b.name, floor: fl.label, use: fl.use,
+          beforeExcl: a, beforeCommon: "", excl: a, common: "", exclude: !!fl.excludedFromGross,
+        });
+        rows++; floorSum += fl.area || 0;
+      }
+    }
+    renderAreaTable();
+  }
+
+  // 층별 합이 대장 연면적과 다르면 알린다 — 층별개요 누락·중복 등록이 실제로 있다.
+  let check = "";
+  if (fillFloors && d.totalGrossFloorArea && Math.abs(floorSum - d.totalGrossFloorArea) > 1)
+    check = ` / ⚠ 층별 합 ${fmt(floorSum)}㎡ ≠ 대장 연면적 ${fmt(d.totalGrossFloorArea)}㎡ — 대장 확인 필요`;
+
+  const approval = ref.map((b) => b.approvalDate).filter(Boolean)[0] || "";
+  status(`건축물대장 — ${bs.length}개동(${ref[0]?.mainUse || ""}${ref[0]?.structure ? ", " + ref[0].structure : ""})`
+    + ` / 건축면적 ${fmt(d.totalBuildingArea)}㎡ · 연면적 ${fmt(d.totalGrossFloorArea)}㎡`
+    + (approval ? ` / 사용승인 ${approval}` : "")
+    + (fillFloors ? ` / 면적표 ${rows}행 채움(변경후도 같은 값 — 바뀌는 층만 고치세요)` : " / 면적표는 그대로 둠")
+    + check);
+  recalc({ quiet: true });
 }
 
 /// 설계개요 표의 특정 칸에 값을 넣는다(사용자 입력 칸도 채워야 하므로 setCalc과 별도).
@@ -542,6 +654,8 @@ $("#modes").addEventListener("click", (e) => {
   renderAreaTable();   // 증감 표시가 모드에 따라 달라진다
   recalc();            // 기준 열(계획/변경후)이 바뀌므로 다시 계산한다
   status(`${state.mode} 모드`);
+  // 주소 조회를 신축 모드에서 해 뒀다면, 기존 건축물 모드로 바꾸는 순간 대장 값을 채운다.
+  if (state.mode !== "신축" && state.project.pnu && !hasBeforeValues()) loadRegister({ auto: true });
 });
 
 $("#tabs").addEventListener("click", (e) => {
@@ -607,6 +721,14 @@ async function pollReview(jobId, stage = "basic") {
   tick();
 }
 
+/// 건축규모 칸에서 지상 층수만 읽는다. "지하 1층, 지상 5층"을 숫자만 모으면 15가 되므로
+/// "지상 N층"을 먼저 찾고, 없으면 첫 숫자를 쓴다.
+function floorsAbove(text) {
+  const s = String(text || "");
+  const m = s.match(/지상\s*(\d+)/) || s.match(/(\d+)/);
+  return m ? parseInt(m[1]) : 0;
+}
+
 function buildProjectPayload() {
   const byBldg = floorsByBuilding();
   const zones = (state.project.useZones || "").split(",").map((s) => s.trim()).filter(Boolean);
@@ -624,7 +746,7 @@ function buildProjectPayload() {
     mode: state.mode,
     plannedBuildingArea: buildingAreaInput(),
     existingBuildingArea: num(state.values.buildingArea?.before),
-    plannedFloorsAbove: parseInt(num(state.values.scale?.[planSlot()])) || 0,
+    plannedFloorsAbove: floorsAbove(state.values.scale?.[planSlot()]),
     zoning: {
       maxCoverageRatio: num(state.values.coverage?.legal) || null,
       maxFloorAreaRatio: num(state.values.floorRatio?.legal) || null,
@@ -984,6 +1106,7 @@ async function openSettings(notice) {
   $("#setMoleg").placeholder = s.hasMoleg ? "저장됨 (변경 시 입력)" : "미입력";
   $("#setClaude").placeholder = s.hasClaude ? "저장됨 (변경 시 입력)" : "미입력";
   $("#setVworld").placeholder = s.hasVworld ? "저장됨 (변경 시 입력)" : "미입력";
+  $("#setDataGoKr").placeholder = s.hasDataGoKr ? "저장됨 (변경 시 입력)" : "미입력";
   $("#dlgSettings").showModal();
 }
 
@@ -992,6 +1115,7 @@ $("#btnSaveSettings").addEventListener("click", async () => {
     molegApiKey: $("#setMoleg").value || null,
     claudeApiKey: $("#setClaude").value || null,
     vworldApiKey: $("#setVworld").value || null,
+    dataGoKrApiKey: $("#setDataGoKr").value || null,
     claudeModel: $("#setModel").value,
     vworldDomain: $("#setVworldDomain").value,
   };

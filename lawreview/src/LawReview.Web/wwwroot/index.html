@@ -49,7 +49,8 @@
           <tr>
             <th>대 지 위 치</th>
             <td colspan="2"><div class="cell" data-field="siteAddress" contenteditable="true" spellcheck="false" data-ph="지번 또는 도로명 주소 — 입력 후 Enter"></div></td>
-            <td class="act"><button class="btn sm" id="btnLookup">자동조회</button></td>
+            <td class="act"><button class="btn sm" id="btnLookup">자동조회</button>
+              <button class="btn sm ghost" id="btnRegister" title="기존 건축물(변경전) 값을 건축물대장에서 채웁니다">건축물대장</button></td>
           </tr>
           <tr><th>지 역 / 지 구</th><td colspan="3"><div class="cell multi" data-field="useZones" contenteditable="true"></div></td></tr>
           <tr>
@@ -223,6 +224,8 @@
     <label>VWorld 키 <input type="password" id="setVworld" placeholder="미입력"></label>
     <p class="hint">주소 자동조회에 사용. 없으면 직접 입력.</p>
     <label>VWorld 서비스 URL <input type="text" id="setVworldDomain"></label>
+    <label>공공데이터포털 키 <input type="password" id="setDataGoKr" placeholder="미입력"></label>
+    <p class="hint">data.go.kr 일반 인증키. 건축물대장(건축HUB) 조회 — 리모델링·증축·용도변경의 변경전 값.</p>
     <menu>
       <button value="cancel" class="btn ghost">닫기</button>
       <button value="save" id="btnSaveSettings" class="btn">저장</button>
